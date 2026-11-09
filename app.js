@@ -1,8 +1,8 @@
-import * as D from './divoom.js?v=16';
-import { EFFECTS, renderFrames } from './effects.js?v=16';
-import { GAMES, gameOverFrame } from './games.js?v=16';
-import * as sfx from './sfx.js?v=16';
-import { drawLibrary, drawPause } from './menu.js?v=16';
+import * as D from './divoom.js?v=17';
+import { EFFECTS, renderFrames } from './effects.js?v=17';
+import { GAMES, gameOverFrame } from './games.js?v=17';
+import * as sfx from './sfx.js?v=17';
+import { drawLibrary, drawPause } from './menu.js?v=17';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -672,7 +672,7 @@ document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
-const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu', y: 'y', Tab: 'y', x: 'x', q: 'x' };
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu', y: 'y', Tab: 'y', x: 'x', q: 'x', e: 'melee' };
 // player 2 on a keyboard: WASD to move, F = A, G = B
 const KEYMAP2 = { w: 'up', a: 'left', s: 'down', d: 'right', f: 'a', g: 'b' };
 document.addEventListener('keydown', e => {
@@ -741,7 +741,7 @@ function pollGamepads() {
     const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     const now = {
       up: b(12) || ay < -0.5, down: b(13) || ay > 0.5, left: b(14) || ax < -0.5, right: b(15) || ax > 0.5,
-      a: b(0) || b(2) || b(7), b: b(1), x: b(2), y: b(3), start: b(9), menu: b(8) || b(16), sl: b(4), sr: b(5),
+      a: b(0) || b(2) || b(7), b: b(1), melee: b(2), y: b(3), start: b(9), menu: b(8) || b(16), sl: b(4), sr: b(5),
     };
     // analog sticks: left x/y and right x/y (the right stick turns you in Maze Raider)
     const axes = { lx: dz(ax), ly: dz(ay), rx: dz(gp.axes[2] || 0), ry: dz(gp.axes[3] || 0) };
@@ -862,7 +862,7 @@ previewFx();
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 // ---------- install and update ----------
-const APP_VERSION = 16; // bump with each release, together with version.json, the ?v= imports and the cache name in sw.js
+const APP_VERSION = 17; // bump with each release, together with version.json, the ?v= imports and the cache name in sw.js
 $('appVer').textContent = APP_VERSION;
 let installEvt = null;
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
