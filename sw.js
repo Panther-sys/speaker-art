@@ -1,5 +1,5 @@
 // Offline cache, plus the receiving end of "Share → Tivoo Studio" (Web Share Target).
-const CACHE = 'tivoo-v13';
+const CACHE = 'tivoo-v14';
 const FILES = ['./', 'index.html', 'app.js', 'divoom.js', 'effects.js', 'games.js', 'sfx.js', 'menu.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== 'tivoo-shared').map(k => caches.delete(k)))).then(() => self.clients.claim())));
