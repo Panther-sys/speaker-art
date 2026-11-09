@@ -589,6 +589,118 @@ export const GAMES = [
     },
   },
   {
+    name: 'Road Hopper', emoji: '🐸', tickMs: 70,
+    help: 'Hop with the arrows. Dodge the traffic, ride logs and turtles across the river (turtles dive!), and land in all 4 homes at the top before the timer runs out. 3 lives.',
+    create() {
+      const g = { score: 0, over: false, tickMs: 70 };
+      const WRAP = 22;                 // lanes repeat every 22 cells so objects drift in from off-screen
+      const HOMES = [1, 5, 9, 13];     // left x of each 2-wide home slot on row 0
+      const CAR_COLORS = [[255, 70, 70], [255, 210, 40], [80, 170, 255], [255, 140, 220], [255, 140, 40], [255, 255, 255]];
+      let level = 1, lives = 3, homes = [false, false, false, false], lanes = [];
+      let x = 7, y = 14, best = 14, timer = 0, dead = 0, t = 0;
+      const TIME = 430; // about 30 s per attempt
+
+      function buildLanes() {
+        const sp = 1 + (level - 1) * 0.18;
+        const L = (y, kind, dir, speed, objs) => ({ y, kind, dir, speed: speed * sp, objs: objs.map(([x, len]) => ({ x, len })) });
+        lanes = [
+          // river (row 1..6): logs and turtles
+          L(1, 'log', 1, 0.09, [[0, 4], [9, 3], [16, 4]]),
+          L(2, 'turtle', -1, 0.11, [[2, 2], [8, 3], [15, 2]]),
+          L(3, 'log', 1, 0.14, [[1, 3], [11, 5]]),
+          L(4, 'turtle', -1, 0.08, [[0, 3], [7, 3], [14, 3]]),
+          L(5, 'log', 1, 0.12, [[3, 5], [13, 3]]),
+          L(6, 'turtle', -1, 0.13, [[1, 2], [6, 2], [12, 2], [18, 2]]),
+          // road (row 8..13)
+          L(8, 'car', -1, 0.16, [[2, 3], [12, 3]]),
+          L(9, 'car', 1, 0.12, [[0, 1], [6, 1], [12, 1], [17, 1]]),
+          L(10, 'car', -1, 0.2, [[4, 2], [15, 2]]),
+          L(11, 'car', 1, 0.09, [[1, 1], [8, 2], [15, 1]]),
+          L(12, 'car', -1, 0.14, [[3, 1], [10, 1], [17, 1]]),
+          L(13, 'car', 1, 0.1, [[0, 2], [9, 2], [16, 1]]),
+        ];
+        lanes.forEach((l, i) => l.objs.forEach((o, k) => { o.c = CAR_COLORS[(i + k) % CAR_COLORS.length]; o.phase = k * 37 + i * 11; }));
+      }
+      buildLanes();
+      const respawn = () => { x = 7; y = 14; best = 14; timer = TIME; };
+      respawn();
+
+      // where an object covers cell cx (taking wrap-around into account)
+      const covers = (o, cx) => { const d = ((cx - o.x) % WRAP + WRAP) % WRAP; return d < o.len; };
+      // riding is forgiving by a third of a cell, so a log you can see under you always holds you
+      const under = (o, px) => { const d = ((px - o.x) % WRAP + WRAP) % WRAP; return d < o.len - 0.5 + 0.85 || d > WRAP - 0.85; };
+      // turtles blink as a warning, then go under for a moment
+      const turtlePhase = o => (t + o.phase) % 90;
+      const diving = o => turtlePhase(o) >= 74 && turtlePhase(o) < 88;
+      const laneAt = row => lanes.find(l => l.y === row);
+
+      function die(kind) {
+        lives--; dead = 14; fx(g, kind === 'water' ? 'boom' : 'hurt'); navigator.vibrate?.(120);
+        if (!lives) g.over = true;
+      }
+
+      g.tick = (inp, rgb) => {
+        t++;
+        for (const l of lanes) for (const o of l.objs) o.x = ((o.x + l.dir * l.speed) % WRAP + WRAP) % WRAP;
+        if (dead) { dead--; if (!dead && !g.over) respawn(); }
+        else {
+          // hops: one cell per press
+          let moved = false;
+          if (inp.pressed.has('up')) { y--; moved = true; }
+          else if (inp.pressed.has('down') && y < 14) { y++; moved = true; }
+          else if (inp.pressed.has('left') && x > 0.5) { x = Math.round(x) - 1; moved = true; }
+          else if (inp.pressed.has('right') && x < 14.5) { x = Math.round(x) + 1; moved = true; }
+          if (moved) { fx(g, 'bounce'); if (y < best) { best = y; g.score += 10; } }
+          if (y >= 1 && y <= 6 && moved) x = Math.round(x);
+          timer--;
+          const cx = Math.round(x);
+          const lane = laneAt(y);
+          if (y === 0) {
+            const slot = HOMES.findIndex(h => cx === h || cx === h + 1);
+            if (slot < 0 || homes[slot]) die('hedge');
+            else {
+              homes[slot] = true; g.score += 50 + Math.floor(timer / 10); fx(g, 'coin');
+              if (homes.every(Boolean)) { level++; g.score += 100; homes = [false, false, false, false]; buildLanes(); fx(g, 'level'); }
+              respawn();
+            }
+          } else if (lane && lane.kind === 'car') {
+            if (lane.objs.some(o => covers(o, cx))) die('car');
+          } else if (lane) { // river: ride or sink
+            const ride = lane.objs.find(o => under(o, x) && !(lane.kind === 'turtle' && diving(o)));
+            if (!ride) die('water');
+            else { x += lane.dir * lane.speed; if (x < -0.4 || x > 15.4) die('water'); }
+          }
+          if (!dead && timer <= 0) die('time');
+        }
+
+        // ---- draw ----
+        for (let row = 0; row < N; row++) for (let col = 0; col < N; col++) {
+          let c;
+          if (row === 0) c = HOMES.some(h => col === h || col === h + 1) ? [10, 30, 60] : [20, 110, 40];
+          else if (row <= 6) c = (col * 3 + row * 5 + (t >> 2)) % 23 === 0 ? [90, 150, 255] : [20, 60, 160];
+          else if (row === 7 || row === 14) c = [70, 40, 110];
+          else if (row <= 13) c = row === 10 && col % 4 < 2 ? [60, 60, 60] : [25, 25, 30];
+          else c = [0, 0, 0];
+          set(rgb, col, row, c);
+        }
+        homes.forEach((f, i) => { if (f) { set(rgb, HOMES[i], 0, [120, 255, 80]); set(rgb, HOMES[i] + 1, 0, [120, 255, 80]); } });
+        for (const l of lanes) for (const o of l.objs) for (let col = 0; col < N; col++) {
+          if (!covers(o, col)) continue;
+          if (l.kind === 'log') set(rgb, col, l.y, [140, 90, 40]);
+          else if (l.kind === 'turtle') { const ph = turtlePhase(o); if (!diving(o)) set(rgb, col, l.y, ph >= 62 && ph < 74 && t % 4 < 2 ? [30, 100, 70] : [40, 170, 90]); }
+          else set(rgb, col, l.y, o.c);
+        }
+        if (dead) { if (t % 4 < 2) { set(rgb, Math.round(x), y, [255, 40, 40]); } }
+        else set(rgb, Math.round(x), y, t % 10 < 8 ? [140, 255, 90] : [220, 255, 200]);
+        // status row: timer bar and lives
+        const bar = Math.ceil(Math.max(0, timer) / TIME * 12);
+        for (let col = 0; col < 12; col++) set(rgb, col, 15, col < bar ? (bar > 3 ? [60, 200, 90] : [255, 80, 60]) : [15, 15, 20]);
+        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 15, [255, 60, 90]);
+      };
+      return g;
+    },
+  },
+  {
     name: 'Brick breaker', emoji: '🧱', tickMs: 80,
     help: 'Hold left or right to move the paddle. Clear all the bricks.',
     create() {
