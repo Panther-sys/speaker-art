@@ -1,6 +1,7 @@
-import * as D from './divoom.js?v=6';
-import { EFFECTS, renderFrames } from './effects.js?v=6';
-import { GAMES, gameOverFrame } from './games.js?v=6';
+import * as D from './divoom.js?v=7';
+import { EFFECTS, renderFrames } from './effects.js?v=7';
+import { GAMES, gameOverFrame } from './games.js?v=7';
+import * as sfx from './sfx.js?v=7';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -546,6 +547,7 @@ function startGame() {
   player.stop();
   liveSource = 'game';
   game = gameSel.create(); gameT = 0;
+  sfx.play('start');
   input.pressed.clear();
   $('gameStart').textContent = '■ Stop'; $('bpPlay').textContent = '■'; $('bpGame').textContent = gameSel.name; keepAwake();
   $('badge').textContent = tivoo.connected ? '● game on Tivoo' : 'game preview';
@@ -557,9 +559,10 @@ function startGame() {
     if (!game.over) {
       game.tick(input, rgb);
       input.pressed.clear();
+      if (game.sfx?.length) { game.sfx.forEach(n => sfx.play(n)); game.sfx.length = 0; }
       $('gameScore').textContent = game.score; $('bpScore').textContent = game.score;
       if (game.over) {
-        navigator.vibrate?.(200);
+        navigator.vibrate?.(200); sfx.play(game.won ? 'win' : 'die');
         if (game.score > best(gameSel.name)) { try { localStorage.setItem('tivoo-best-' + gameSel.name, game.score); } catch {} $('gameBest').textContent = game.score; ui.status(`New best: ${game.score}! Press A to play again.`); }
         else ui.status(`${game.won ? 'You win' : 'Game over'}: ${game.score}. Press A to play again.`);
       }
@@ -608,6 +611,13 @@ $('preview').addEventListener('pointerup', endSwipe);
 $('preview').addEventListener('pointercancel', () => { if (swipe?.k) release(swipe.k); swipe = null; });
 $('preview').style.touchAction = 'none';
 
+// ----- sound -----
+const soundBtn = $('soundBtn');
+const showSound = () => { soundBtn.textContent = sfx.isOn() ? '🔊 Sound on' : '🔇 Sound off'; };
+soundBtn.onclick = () => { sfx.setOn(!sfx.isOn()); showSound(); if (sfx.isOn()) sfx.play('coin'); };
+showSound();
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => sfx.isOn() && sfx.unlock(), { capture: true, passive: true }));
+
 // ----- big full-screen controller -----
 $('bigPadBtn').onclick = async () => {
   $('bigPad').hidden = false; $('bpGame').textContent = gameSel.name;
@@ -632,14 +642,15 @@ const padPrev = {};
 function pollGamepads() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   if (!pads.length) return;
-  const now = { up: false, down: false, left: false, right: false, a: false, start: false };
+  const now = { up: false, down: false, left: false, right: false, a: false, sl: false, sr: false, start: false };
   for (const gp of pads) {
     const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     now.up ||= b(12) || ay < -0.5; now.down ||= b(13) || ay > 0.5;
     now.left ||= b(14) || ax < -0.5; now.right ||= b(15) || ax > 0.5;
     now.a ||= b(0) || b(1) || b(2) || b(3) || b(7); now.start ||= b(9);
+    now.sl ||= b(4); now.sr ||= b(5);
   }
-  for (const k of ['up', 'down', 'left', 'right', 'a']) {
+  for (const k of ['up', 'down', 'left', 'right', 'a', 'sl', 'sr']) {
     if (now[k] && !padPrev[k]) { press(k); if (k === 'a' && (!game || liveSource !== 'game') && document.querySelector('#games.active')) startGame(); }
     if (!now[k] && padPrev[k]) release(k);
     padPrev[k] = now[k];
