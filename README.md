@@ -29,3 +29,6 @@ It's plain static files with no build step:
 ```
 python -m http.server 8000   # then open http://localhost:8000
 ```
+
+When releasing a change, bump the `?v=` number on the script imports in `index.html` and `app.js`
+and the `CACHE` name in `sw.js`, so phones never mix old and new files.
