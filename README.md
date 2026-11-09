@@ -1,4 +1,6 @@
-# Tivoo Studio
+# Pixel Pal
+
+> Pixel Pal is an independent app. It works with the Divoom Tivoo but is not made by, endorsed by or affiliated with Divoom. "Divoom" and "Tivoo" are their trademarks.
 
 A web app that controls a **Divoom Tivoo** (16×16 LED Bluetooth speaker) straight from Chrome, with no install needed.
 

@@ -1,20 +1,57 @@
 {
-  "name": "Tivoo Studio",
-  "short_name": "Tivoo",
+  "id": "./",
+  "name": "Pixel Pal",
+  "short_name": "Pixel Pal",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0d0f14",
   "theme_color": "#0d0f14",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ],
   "share_target": {
     "action": "./share-target",
     "method": "POST",
     "enctype": "multipart/form-data",
-    "params": { "files": [{ "name": "media", "accept": ["image/*", ".gif", ".png", ".jpg", ".jpeg", ".webp"] }] }
-  }
+    "params": {
+      "files": [
+        {
+          "name": "media",
+          "accept": [
+            "image/*",
+            ".gif",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp"
+          ]
+        }
+      ]
+    }
+  },
+  "description": "Pictures, animations and games for your 16×16 LED speaker. Works with the Divoom Tivoo; not made by or affiliated with Divoom."
 }
