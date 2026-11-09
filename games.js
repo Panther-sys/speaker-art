@@ -28,7 +28,7 @@ export function drawNumber(rgb, n, y, c) {
 export const GAMES = [
   {
     name: 'Snake', emoji: '🐍', tickMs: 170,
-    help: 'Swipe or use the arrows to steer. Eat the red dots, avoid walls and your tail.',
+    help: 'Swipe or use the arrows to steer. Eat the red dots and don\'t bite your tail. The edges wrap around, so you can go through the walls.',
     create() {
       let body = [[7, 8], [6, 8], [5, 8]], dir = [1, 0], next = [1, 0], food = null, grow = 0;
       const g = { score: 0, over: false, tickMs: 170 };
@@ -40,8 +40,9 @@ export const GAMES = [
           if (d && (d[0] !== -dir[0] || d[1] !== -dir[1])) next = d;
         }
         dir = next;
-        const h = [body[0][0] + dir[0], body[0][1] + dir[1]];
-        if (h[0] < 0 || h[1] < 0 || h[0] >= N || h[1] >= N || body.some(([x, y]) => x === h[0] && y === h[1])) { g.over = true; return; }
+        // the edges wrap around: leave on one side, come back on the other
+        const h = [(body[0][0] + dir[0] + N) % N, (body[0][1] + dir[1] + N) % N];
+        if (body.slice(0, -1).some(([x, y]) => x === h[0] && y === h[1])) { g.over = true; return; }
         body.unshift(h);
         if (h[0] === food[0] && h[1] === food[1]) { g.score++; fx(g, 'eat'); grow += 1; place(); g.tickMs = Math.max(80, 170 - g.score * 4); }
         if (grow > 0) grow--; else body.pop();

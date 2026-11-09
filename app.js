@@ -1,7 +1,8 @@
-import * as D from './divoom.js?v=7';
-import { EFFECTS, renderFrames } from './effects.js?v=7';
-import { GAMES, gameOverFrame } from './games.js?v=7';
-import * as sfx from './sfx.js?v=7';
+import * as D from './divoom.js?v=8';
+import { EFFECTS, renderFrames } from './effects.js?v=8';
+import { GAMES, gameOverFrame } from './games.js?v=8';
+import * as sfx from './sfx.js?v=8';
+import { drawLibrary, drawPause } from './menu.js?v=8';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -530,74 +531,132 @@ $('txtLive').onclick = () => {
 };
 
 // ---------------- Games ----------------
-let gameSel = GAMES[0], game = null, gameT = 0;
+// The arcade runs as one loop with four modes: 'library' (pick a game on the Tivoo),
+// 'play', 'pause' (Resume / Restart / Library) and 'over' (A again, B library).
+let selIdx = 0, game = null, gameT = 0, mode = null, pauseSel = 0, frozen = null;
+const gameSel = () => GAMES[selIdx];
 const input = { held: {}, pressed: new Set() };
 const best = name => { try { return +localStorage.getItem('tivoo-best-' + name) || 0; } catch { return 0; } };
 GAMES.forEach((gm, i) => {
   const b = document.createElement('button');
   b.className = 'fx gm' + (i === 0 ? ' sel' : '');
   b.innerHTML = `<b>${gm.emoji}</b>${gm.name}`;
-  b.onclick = () => { gameSel = gm; document.querySelectorAll('.gm').forEach(x => x.classList.toggle('sel', x === b)); showGameInfo(); if (game) startGame(); };
+  b.onclick = () => { selectGame(i); if (mode && mode !== 'library') beginGame(); };
   $('gameGrid').appendChild(b);
 });
-function showGameInfo() { $('gameHelp').textContent = gameSel.help; $('gameBest').textContent = best(gameSel.name); $('gameScore').textContent = 0; }
-showGameInfo();
+function selectGame(i) {
+  selIdx = (i + GAMES.length) % GAMES.length;
+  document.querySelectorAll('.gm').forEach((x, k) => x.classList.toggle('sel', k === selIdx));
+  $('gameHelp').textContent = gameSel().help; $('gameBest').textContent = best(gameSel().name); $('gameScore').textContent = 0;
+  $('bpGame').textContent = gameSel().name;
+}
+selectGame(0);
 
-function startGame() {
-  player.stop();
-  liveSource = 'game';
-  game = gameSel.create(); gameT = 0;
-  sfx.play('start');
+function setMode(m) {
+  mode = m;
+  const playing = m === 'play' || m === 'pause' || m === 'over';
+  $('gameStart').textContent = m ? '■ Stop' : '▶ Play';
+  $('bpPlay').textContent = m === 'play' ? '⏸' : '▶';
+  const labels = { library: 'Library: ◀▶ choose, A play', play: gameSel().name, pause: 'Paused', over: 'Game over: A again, B library' };
+  $('bpGame').textContent = m ? labels[m] : gameSel().name;
+  $('badge').textContent = m ? (tivoo.connected ? '● arcade on Tivoo' : 'arcade preview') : 'preview';
+  if (m) keepAwake(); else releaseWakeLock();
+  return playing;
+}
+function beginGame() {
+  game = gameSel().create(); gameT = 0;
   input.pressed.clear();
-  $('gameStart').textContent = '■ Stop'; $('bpPlay').textContent = '■'; $('bpGame').textContent = gameSel.name; keepAwake();
-  $('badge').textContent = tivoo.connected ? '● game on Tivoo' : 'game preview';
-  ui.status(`Playing ${gameSel.name}.${tivoo.connected ? '' : ' Connect to play it on the Tivoo.'}`);
-  const rgb = new Uint8Array(N * N * 3);
+  sfx.play('start');
+  setMode('play');
+  ui.status(`Playing ${gameSel().name}. B or Start pauses.${tivoo.connected ? '' : ' Connect to play it on the Tivoo.'}`);
+  ensureLoop();
+}
+function openLibrary() {
+  game = null; setMode('library');
+  ui.status('Game library: ◀ ▶ to browse, A to play.');
+  ensureLoop();
+}
+function stopArcade() { game = null; setMode(null); if (liveSource === 'game') { player.stop(); liveSource = null; } ui.status('Games stopped.'); }
+const stopGame = stopArcade;
+
+const rgb = new Uint8Array(N * N * 3);
+function ensureLoop() {
+  if (liveSource === 'game' && player.timer) return;
+  player.stop(); liveSource = 'game';
+  $('badge').textContent = tivoo.connected ? '● arcade on Tivoo' : 'arcade preview';
   const tick = () => {
-    if (liveSource !== 'game' || !game) return;
+    player.timer = null;
+    if (liveSource !== 'game' || !mode) return;
     const start = performance.now();
-    if (!game.over) {
-      game.tick(input, rgb);
-      input.pressed.clear();
-      if (game.sfx?.length) { game.sfx.forEach(n => sfx.play(n)); game.sfx.length = 0; }
-      $('gameScore').textContent = game.score; $('bpScore').textContent = game.score;
-      if (game.over) {
-        navigator.vibrate?.(200); sfx.play(game.won ? 'win' : 'die');
-        if (game.score > best(gameSel.name)) { try { localStorage.setItem('tivoo-best-' + gameSel.name, game.score); } catch {} $('gameBest').textContent = game.score; ui.status(`New best: ${game.score}! Press A to play again.`); }
-        else ui.status(`${game.won ? 'You win' : 'Game over'}: ${game.score}. Press A to play again.`);
+    const p = input.pressed;
+    let delay = 120;
+    if (mode === 'library') {
+      if (p.has('left') || p.has('up')) { selectGame(selIdx - 1); sfx.play('bounce'); }
+      if (p.has('right') || p.has('down')) { selectGame(selIdx + 1); sfx.play('bounce'); }
+      if (p.has('a') || p.has('start')) { p.clear(); return beginGame(), undefined; }
+      drawLibrary(rgb, GAMES, selIdx, gameT);
+    } else if (mode === 'play') {
+      if (p.has('b') || p.has('start')) { frozen = rgb.slice(); pauseSel = 0; setMode('pause'); sfx.play('click'); }
+      else if (p.has('menu')) { sfx.play('click'); p.clear(); return openLibrary(); }
+      else {
+        game.tick(input, rgb);
+        if (game.sfx?.length) { game.sfx.forEach(n => sfx.play(n)); game.sfx.length = 0; }
+        $('gameScore').textContent = game.score; $('bpScore').textContent = game.score;
+        if (game.over) {
+          navigator.vibrate?.(200); sfx.play(game.won ? 'win' : 'die'); setMode('over');
+          if (game.score > best(gameSel().name)) { try { localStorage.setItem('tivoo-best-' + gameSel().name, game.score); } catch {} $('gameBest').textContent = game.score; ui.status(`New best: ${game.score}! A to play again, B for the library.`); }
+          else ui.status(`${game.won ? 'You win' : 'Game over'}: ${game.score}. A to play again, B for the library.`);
+        }
+        delay = game.tickMs;
       }
-    } else {
+    } else if (mode === 'pause') {
+      if (p.has('left') || p.has('up')) { pauseSel = (pauseSel + 2) % 3; sfx.play('bounce'); }
+      if (p.has('right') || p.has('down')) { pauseSel = (pauseSel + 1) % 3; sfx.play('bounce'); }
+      if (p.has('b') || p.has('start')) { setMode('play'); }
+      else if (p.has('a')) {
+        p.clear();
+        if (pauseSel === 0) setMode('play');
+        else if (pauseSel === 1) return beginGame();
+        else return openLibrary();
+      }
+      if (mode === 'pause') drawPause(rgb, frozen, pauseSel, gameT);
+    } else if (mode === 'over') {
+      if (p.has('a') || p.has('start')) { p.clear(); return beginGame(); }
+      if (p.has('b') || p.has('menu')) { p.clear(); return openLibrary(); }
       gameOverFrame(rgb, game, gameT);
-      if (input.pressed.has('a')) { input.pressed.clear(); return startGame(); }
-      input.pressed.clear();
+      delay = 200;
     }
+    p.clear();
     gameT++;
     drawLeds(rgb);
     if (!$('bigPad').hidden) $('bpScreen').getContext('2d').drawImage($('preview'), 0, 0, 160, 160);
     if (tivoo.connected) tivoo.sendLatest(rgb);
-    player.timer = setTimeout(tick, Math.max(60, (game.over ? 200 : game.tickMs) - (performance.now() - start)));
+    player.timer = setTimeout(tick, Math.max(60, delay - (performance.now() - start)));
   };
   tick();
 }
-function stopGameHook() { $('bpPlay').textContent = '▶'; releaseWakeLock(); }
-function stopGame() { stopGameHook(); game = null; if (liveSource === 'game') { player.stop(); liveSource = null; } $('gameStart').textContent = '▶ Play'; ui.status('Game stopped.'); }
-$('gameStart').onclick = () => (game && liveSource === 'game' ? stopGame() : startGame());
+$('gameStart').onclick = () => (mode ? stopArcade() : beginGame());
 
 function press(key) { input.pressed.add(key); input.held[key] = true; }
 function release(key) { input.held[key] = false; }
 document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   const k = b.dataset.key;
-  b.addEventListener('pointerdown', e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add('down'); press(k); if (!game && k === 'a') startGame(); });
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {}
+    b.classList.add('down');
+    if (!mode) { if (k === 'a') beginGame(); return; }
+    press(k);
+  });
   const up = () => { b.classList.remove('down'); release(k); };
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
-const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a' };
-document.addEventListener('keydown', e => { const k = KEYMAP[e.key]; if (!k || liveSource !== 'game' || e.target.matches('input, select, textarea')) return; e.preventDefault(); if (!e.repeat) press(k); });
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu' };
+document.addEventListener('keydown', e => { const k = KEYMAP[e.key]; if (!k || !mode || e.target.matches('input, select, textarea')) return; e.preventDefault(); if (!e.repeat) press(k); });
 document.addEventListener('keyup', e => { const k = KEYMAP[e.key]; if (k) release(k); });
 // swipe / tap on the preview screen
 let swipe = null;
-$('preview').addEventListener('pointerdown', e => { if (liveSource === 'game') swipe = { x: e.clientX, y: e.clientY, k: null }; });
+$('preview').addEventListener('pointerdown', e => { if (mode) swipe = { x: e.clientX, y: e.clientY, k: null }; });
 $('preview').addEventListener('pointermove', e => {
   if (!swipe) return;
   const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
@@ -610,6 +669,7 @@ const endSwipe = () => { if (!swipe) return; if (swipe.k) release(swipe.k); else
 $('preview').addEventListener('pointerup', endSwipe);
 $('preview').addEventListener('pointercancel', () => { if (swipe?.k) release(swipe.k); swipe = null; });
 $('preview').style.touchAction = 'none';
+$('libraryBtn').onclick = () => openLibrary();
 
 // ----- sound -----
 const soundBtn = $('soundBtn');
@@ -620,47 +680,52 @@ showSound();
 
 // ----- big full-screen controller -----
 $('bigPadBtn').onclick = async () => {
-  $('bigPad').hidden = false; $('bpGame').textContent = gameSel.name;
+  $('bigPad').hidden = false;
   try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch {}
   try { await screen.orientation.lock('landscape'); } catch {}
-  if (!game) startGame();
+  if (!mode) openLibrary();
 };
 $('bpClose').onclick = async () => {
   $('bigPad').hidden = true;
   try { screen.orientation.unlock(); } catch {}
   try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {}
 };
-$('bpPlay').onclick = () => (game && liveSource === 'game' ? stopGame() : startGame());
+$('bpPlay').onclick = () => { if (!mode) openLibrary(); else press('start'); };
+$('bpMenu').onclick = () => openLibrary();
 
-// keep the phone screen on while a game runs
+// keep the phone screen on while the arcade runs
 let wakeLock = null;
 async function keepAwake() { try { wakeLock = wakeLock || await navigator.wakeLock?.request('screen'); } catch {} }
 function releaseWakeLock() { try { wakeLock?.release(); } catch {} wakeLock = null; }
 
 // ----- Bluetooth / USB game controllers (Gamepad API, standard mapping) -----
+// A / X / RT = action, B = back or pause, Y = action, Start = pause, View (Back) = library, LB/RB = sidestep
 const padPrev = {};
 function pollGamepads() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   if (!pads.length) return;
-  const now = { up: false, down: false, left: false, right: false, a: false, sl: false, sr: false, start: false };
+  const now = { up: false, down: false, left: false, right: false, a: false, b: false, sl: false, sr: false, start: false, menu: false };
   for (const gp of pads) {
     const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     now.up ||= b(12) || ay < -0.5; now.down ||= b(13) || ay > 0.5;
     now.left ||= b(14) || ax < -0.5; now.right ||= b(15) || ax > 0.5;
-    now.a ||= b(0) || b(1) || b(2) || b(3) || b(7); now.start ||= b(9);
+    now.a ||= b(0) || b(2) || b(3) || b(7); now.b ||= b(1);
+    now.start ||= b(9); now.menu ||= b(8) || b(16);
     now.sl ||= b(4); now.sr ||= b(5);
   }
-  for (const k of ['up', 'down', 'left', 'right', 'a', 'sl', 'sr']) {
-    if (now[k] && !padPrev[k]) { press(k); if (k === 'a' && (!game || liveSource !== 'game') && document.querySelector('#games.active')) startGame(); }
+  for (const k of Object.keys(now)) {
+    if (now[k] && !padPrev[k]) {
+      if (!mode) { document.querySelector('[data-tab=games]').click(); openLibrary(); }
+      else if (k === 'menu' && mode !== 'play') openLibrary();
+      else press(k);
+    }
     if (!now[k] && padPrev[k]) release(k);
     padPrev[k] = now[k];
   }
-  if (now.start && !padPrev.start) { document.querySelector('[data-tab=games]').click(); game && liveSource === 'game' ? (game.over ? startGame() : stopGame()) : startGame(); }
-  padPrev.start = now.start;
 }
 let padLoop = null;
 window.addEventListener('gamepadconnected', e => {
-  ui.status(`🎮 Controller connected: ${e.gamepad.id.split('(')[0].trim()}. Press Start or A to play.`);
+  ui.status(`🎮 Controller connected: ${e.gamepad.id.split('(')[0].trim()}. Press any button for the game library.`);
   if (!padLoop) { const loop = () => { pollGamepads(); padLoop = requestAnimationFrame(loop); }; loop(); }
 });
 window.addEventListener('gamepaddisconnected', () => { if (!navigator.getGamepads().some(Boolean)) { cancelAnimationFrame(padLoop); padLoop = null; ui.status('Controller disconnected.'); } });
