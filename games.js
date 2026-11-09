@@ -1020,7 +1020,11 @@ const GAME_LIST = [
           const live = things.filter(m => m.kind === 'm' && m.hp > 0).map(m => {
             const rx = m.x - px, ry = m.y - py;
             return { m, depth: rx * dx + ry * dy, lateral: -rx * dy + ry * dx };
-          }).filter(s => (wep === 'axe' ? s.depth > -0.3 : s.depth > 0.1) && sight(px, py, s.m.x, s.m.y));
+          }).filter(s => s.depth > (wep === 'axe' ? -0.3 : -0.2) && sight(px, py, s.m.x, s.m.y));
+          // anything right on top of you gets hit by every weapon, even if it's a little to the side
+          const close = s => Math.hypot(s.depth, s.lateral) < 0.8;
+          // the firing look everyone liked on the shotgun: a fan of three trails, a white muzzle flash and a small kick
+          const fan = (spread, c, far) => { for (const o of [-spread, 0, spread]) { const d0 = Math.min(ahead, far), c2 = Math.cos(ang + o), s2 = Math.sin(ang + o); tracers.push({ x: px + c2 * d0, y: py + s2 * d0, c, life: 2 }); } };
           const ahead = Math.max(zbuf[7], zbuf[8]);
           if (wep === 'axe') { // a wide swing that hits everything right in front of you
             cool = 6; swing = 4; fx(g, 'jump');
@@ -1038,19 +1042,19 @@ const GAME_LIST = [
             wep = 'axe'; fx(g, 'click'); cool = 4;
           } else if (wep === 'shotgun') { // a wide spread that can hit several monsters
             ammo--; muzzle = 2; recoil = 2; cool = 9; shake(g, 1); fx(g, 'shoot');
-            const hits = live.filter(s => s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2);
+            const hits = live.filter(s => close(s) || (s.depth > 0 && s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2));
             for (const s of hits) damage(s.m, s.depth < 3 ? 3 : 2);
-            for (const o of [-0.25, 0, 0.25]) { const d0 = Math.min(ahead, 4), c = Math.cos(ang + o), s2 = Math.sin(ang + o); tracers.push({ x: px + c * d0, y: py + s2 * d0, c: GOLD, life: 2 }); }
+            fan(0.25, GOLD, 4);
           } else if (wep === 'ray') { // a beam that goes through every monster in a line
-            ammo = Math.max(0, ammo - 2); muzzle = 3; recoil = 2; cool = 11; fx(g, 'power');
-            for (const s of live) if (Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3) damage(s.m, 3);
+            ammo = Math.max(0, ammo - 2); muzzle = 3; recoil = 2; cool = 11; shake(g, 1); fx(g, 'power');
+            for (const s of live) if (close(s) || (Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3)) damage(s.m, 3);
             tracers.push({ x: px + dx * ahead, y: py + dy * ahead, c: YOU, life: 3, beam: true });
+            fan(0.18, YOU, 3);
           } else {
-            ammo--; muzzle = 2; recoil = 2; cool = 4; fx(g, 'shoot');
-            const best = live.filter(s => Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3).sort((a, b) => a.depth - b.depth)[0];
+            ammo--; muzzle = 2; recoil = 2; cool = 4; shake(g, 1); fx(g, 'shoot');
+            const best = live.filter(s => close(s) || (s.depth > 0 && Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3)).sort((a, b) => Math.hypot(a.depth, a.lateral) - Math.hypot(b.depth, b.lateral))[0];
             if (best) damage(best.m, 1);
-            const e = best ? best.m : { x: px + dx * ahead, y: py + dy * ahead };
-            tracers.push({ x: e.x, y: e.y, c: GOLD, life: 2, spark: !!best });
+            fan(0.12, GOLD, best ? Math.max(0.5, best.depth) : 3);
           }
         }
 
@@ -1107,11 +1111,11 @@ const GAME_LIST = [
           set(rgb, 7, 12 + bob + kick, YOU); set(rgb, 8, 12 + bob + kick, YOU);
           set(rgb, 7, 13 + bob, WHITE); set(rgb, 8, 13 + bob, WHITE);
           for (let x = 6; x <= 9; x++) set(rgb, x, 14, GREY);
-          if (muzzle) muzzle--;
+          if (muzzle) { muzzle--; set(rgb, 7, 11, WHITE); set(rgb, 8, 11, WHITE); }
         } else {
           set(rgb, 7, 13 + bob + kick, WHITE); set(rgb, 8, 13 + bob + kick, WHITE);
           set(rgb, 7, 14, GREY); set(rgb, 8, 14, GREY);
-          if (muzzle) muzzle--;
+          if (muzzle) { muzzle--; set(rgb, 7, 12, WHITE); set(rgb, 8, 12, WHITE); }
         }
         if (showMap) {
           // the map shows only places you have seen
