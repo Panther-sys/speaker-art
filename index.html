@@ -218,8 +218,11 @@
         <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
         <button data-key="a" class="abtn">A</button>
       </div>
-      <button id="bigPadBtn" style="width:100%;margin-top:10px">⛶ Big controller (full screen)</button>
-      <p class="hint" id="padHint">You can also swipe or tap on the preview screen above, or connect a <b>Bluetooth game controller</b> (Xbox, PlayStation, 8BitDo…) to your phone: D-pad or stick to move, A/✕ for action, Start to play. On a computer, use the arrow keys and Space.</p>
+      <div class="row" style="margin-top:10px">
+        <button id="bigPadBtn">⛶ Big controller</button>
+        <button id="soundBtn" style="flex:none">🔊 Sound on</button>
+      </div>
+      <p class="hint" id="padHint">Sound plays from your phone, or from the Tivoo if your phone is connected to it for music. You can also swipe or tap on the preview screen above, or connect a <b>Bluetooth game controller</b> (Xbox, PlayStation, 8BitDo…) to your phone: D-pad or stick to move, A/✕ for action, Start to play. On a computer, use the arrow keys and Space.</p>
     </div>
     <div class="card">
       <h2>Tivoo's own games</h2>
@@ -347,6 +350,6 @@
     <button data-key="a" class="bp-a">A</button>
   </div>
 </div>
-<script type="module" src="app.js?v=6"></script>
+<script type="module" src="app.js?v=7"></script>
 </body>
 </html>
