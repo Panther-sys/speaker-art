@@ -68,9 +68,12 @@
   .lib .item { position: relative; background: #000; border-radius: 10px; border: 1px solid var(--line); padding: 4px; cursor: pointer; }
   .lib canvas { width: 100%; aspect-ratio: 1; display: block; image-rendering: pixelated; }
   .lib .del { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; font-size: 12px; line-height: 1; background: var(--panel2); }
-  .pad { position: sticky; bottom: 0; z-index: 6; background: var(--panel); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 64px) 1fr; grid-template-rows: 56px 56px; gap: 8px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
+  .pad .bbtn { grid-column: 4; grid-row: 2; width: 56px; height: 56px; border-radius: 50%; justify-self: start; font-size: 20px; }
+  .bp-ab { position: relative; display: flex; align-items: flex-end; gap: 12px; }
+  .bp-b { width: min(22vw, 22vh, 110px); height: min(22vw, 22vh, 110px); border-radius: 50%; font-size: 32px; align-self: flex-start; }
+  .pad { position: sticky; bottom: 0; z-index: 6; background: var(--panel); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 56px) 56px 1fr; grid-template-rows: 56px 56px; gap: 8px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
   .pad button { font-size: 20px; padding: 0; touch-action: none; }
-  .pad .abtn { grid-column: 4; grid-row: 1 / span 2; border-radius: 50%; width: 112px; height: 112px; justify-self: end; background: var(--accent); border-color: var(--accent); font-size: 28px; }
+  .pad .abtn { grid-column: 5; grid-row: 1 / span 2; border-radius: 50%; width: 112px; height: 112px; justify-self: end; background: var(--accent); border-color: var(--accent); font-size: 28px; }
   .pad button.down { background: var(--accent2); color: #000; }
   .tabs button { padding: 9px 2px; font-size: 12px; }
   .bigpad { position: fixed; inset: 0; z-index: 50; background: #07080c; display: flex; flex-direction: column; padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); user-select: none; -webkit-user-select: none; touch-action: none; }
@@ -211,18 +214,20 @@
       <p class="hint" id="gameHelp"></p>
       <div class="row" style="margin:10px 0 4px">
         <button class="primary" id="gameStart">▶ Play</button>
+        <button id="libraryBtn" style="flex:none">☰ Library</button>
         <div style="flex:none;text-align:right;font-size:13px;color:var(--muted)">Score <b id="gameScore" style="color:var(--text)">0</b> · Best <b id="gameBest">0</b></div>
       </div>
       <div class="pad">
         <span></span><button data-key="up">▲</button><span></span>
         <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
+        <button data-key="b" class="bbtn">B</button>
         <button data-key="a" class="abtn">A</button>
       </div>
       <div class="row" style="margin-top:10px">
         <button id="bigPadBtn">⛶ Big controller</button>
         <button id="soundBtn" style="flex:none">🔊 Sound on</button>
       </div>
-      <p class="hint" id="padHint">Sound plays from your phone, or from the Tivoo if your phone is connected to it for music. You can also swipe or tap on the preview screen above, or connect a <b>Bluetooth game controller</b> (Xbox, PlayStation, 8BitDo…) to your phone: D-pad or stick to move, A/✕ for action, Start to play. On a computer, use the arrow keys and Space.</p>
+      <p class="hint" id="padHint">Sound plays from your phone, or from the Tivoo if your phone is connected to it for music. <b>☰ Library</b> shows a game menu on the Tivoo: ◀▶ to browse, A to play. While playing, B or Start pauses (Resume / Restart / Library). Works with a <b>Bluetooth game controller</b> too (Xbox, PlayStation, 8BitDo…): stick or D-pad, A action, B back, Start pause, View button = library. On a computer, use the arrow keys and Space.</p>
     </div>
     <div class="card">
       <h2>Tivoo's own games</h2>
@@ -338,7 +343,8 @@
   <div class="bp-top">
     <canvas id="bpScreen" width="160" height="160"></canvas>
     <div class="bp-info"><b id="bpGame">Snake</b><span>Score <b id="bpScore">0</b></span></div>
-    <button id="bpPlay">▶</button>
+    <button id="bpMenu" aria-label="Game library">☰</button>
+    <button id="bpPlay" aria-label="Pause">▶</button>
     <button id="bpClose" aria-label="Close">✕</button>
   </div>
   <div class="bp-pad">
@@ -347,9 +353,12 @@
       <button data-key="left">◀</button><span></span><button data-key="right">▶</button>
       <span></span><button data-key="down">▼</button><span></span>
     </div>
-    <button data-key="a" class="bp-a">A</button>
+    <div class="bp-ab">
+      <button data-key="b" class="bp-b">B</button>
+      <button data-key="a" class="bp-a">A</button>
+    </div>
   </div>
 </div>
-<script type="module" src="app.js?v=7"></script>
+<script type="module" src="app.js?v=8"></script>
 </body>
 </html>
