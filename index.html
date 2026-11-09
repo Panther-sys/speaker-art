@@ -73,6 +73,19 @@
   .pad .abtn { grid-column: 4; grid-row: 1 / span 2; border-radius: 50%; width: 112px; height: 112px; justify-self: end; background: var(--accent); border-color: var(--accent); font-size: 28px; }
   .pad button.down { background: var(--accent2); color: #000; }
   .tabs button { padding: 9px 2px; font-size: 12px; }
+  .bigpad { position: fixed; inset: 0; z-index: 50; background: #07080c; display: flex; flex-direction: column; padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); user-select: none; -webkit-user-select: none; touch-action: none; }
+  .bigpad[hidden] { display: none; }
+  .bp-top { display: flex; align-items: center; gap: 12px; }
+  .bp-top canvas { width: 72px; height: 72px; border-radius: 8px; background: #000; flex: none; }
+  .bp-info { flex: 1; display: flex; flex-direction: column; color: var(--muted); font-size: 14px; }
+  .bp-info b { color: var(--text); font-size: 16px; }
+  .bp-top button { width: 56px; height: 56px; padding: 0; font-size: 22px; border-radius: 50%; flex: none; }
+  .bp-pad { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .bp-dpad { display: grid; grid-template-columns: repeat(3, min(22vw, 22vh, 120px)); grid-template-rows: repeat(3, min(22vw, 22vh, 120px)); gap: 6px; }
+  .bp-dpad button { font-size: 32px; padding: 0; border-radius: 16px; touch-action: none; }
+  .bp-a { width: min(38vw, 40vh, 220px); height: min(38vw, 40vh, 220px); border-radius: 50%; font-size: 48px; background: var(--accent); border-color: var(--accent); touch-action: none; }
+  .bigpad button.down { background: var(--accent2); color: #000; }
+  @media (orientation: portrait) { .bp-pad { flex-direction: column; justify-content: space-evenly; } }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -205,7 +218,8 @@
         <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
         <button data-key="a" class="abtn">A</button>
       </div>
-      <p class="hint">You can also swipe or tap on the preview screen above. On a computer, use the arrow keys and Space.</p>
+      <button id="bigPadBtn" style="width:100%;margin-top:10px">⛶ Big controller (full screen)</button>
+      <p class="hint" id="padHint">You can also swipe or tap on the preview screen above, or connect a <b>Bluetooth game controller</b> (Xbox, PlayStation, 8BitDo…) to your phone: D-pad or stick to move, A/✕ for action, Start to play. On a computer, use the arrow keys and Space.</p>
     </div>
     <div class="card">
       <h2>Tivoo's own games</h2>
@@ -317,6 +331,22 @@
     </details>
   </section>
 </div>
-<script type="module" src="app.js?v=4"></script>
+<div class="bigpad" id="bigPad" hidden>
+  <div class="bp-top">
+    <canvas id="bpScreen" width="160" height="160"></canvas>
+    <div class="bp-info"><b id="bpGame">Snake</b><span>Score <b id="bpScore">0</b></span></div>
+    <button id="bpPlay">▶</button>
+    <button id="bpClose" aria-label="Close">✕</button>
+  </div>
+  <div class="bp-pad">
+    <div class="bp-dpad">
+      <span></span><button data-key="up">▲</button><span></span>
+      <button data-key="left">◀</button><span></span><button data-key="right">▶</button>
+      <span></span><button data-key="down">▼</button><span></span>
+    </div>
+    <button data-key="a" class="bp-a">A</button>
+  </div>
+</div>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>
