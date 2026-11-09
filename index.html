@@ -71,6 +71,9 @@
   .pad .bbtn { grid-column: 4; grid-row: 2; width: 56px; height: 56px; border-radius: 50%; justify-self: start; font-size: 20px; }
   .pad .ybtn { grid-column: 4; grid-row: 1; width: 44px; height: 44px; border-radius: 50%; justify-self: start; align-self: end; font-size: 15px; }
   .bp-y { width: min(14vw, 14vh, 70px); height: min(14vw, 14vh, 70px); border-radius: 50%; font-size: 22px; align-self: flex-start; }
+  .pad .xbtn { width: 44px; height: 44px; border-radius: 50%; justify-self: center; align-self: center; font-size: 15px; visibility: hidden; }
+  .bp-x { width: min(14vw, 14vh, 70px); height: min(14vw, 14vh, 70px); border-radius: 50%; font-size: 22px; align-self: flex-start; display: none; }
+  body.usesx .pad .xbtn { visibility: visible; } body.usesx .bp-x { display: block; }
   .bp-ab { position: relative; display: flex; align-items: flex-end; gap: 12px; }
   .bp-b { width: min(22vw, 22vh, 110px); height: min(22vw, 22vh, 110px); border-radius: 50%; font-size: 32px; align-self: flex-start; }
   .pad { position: sticky; bottom: 0; z-index: 6; background: var(--panel); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 56px) 56px 1fr; grid-template-rows: 56px 56px; gap: 8px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
@@ -220,7 +223,7 @@
         <div style="flex:none;text-align:right;font-size:13px;color:var(--muted)">Score <b id="gameScore" style="color:var(--text)">0</b> · Best <b id="gameBest">0</b></div>
       </div>
       <div class="pad">
-        <span></span><button data-key="up">▲</button><span></span>
+        <span></span><button data-key="up">▲</button><button data-key="x" class="xbtn">X</button>
         <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
         <button data-key="y" class="ybtn">Y</button>
         <button data-key="b" class="bbtn">B</button>
@@ -357,12 +360,13 @@
       <span></span><button data-key="down">▼</button><span></span>
     </div>
     <div class="bp-ab">
+      <button data-key="x" class="bp-x">X</button>
       <button data-key="y" class="bp-y">Y</button>
       <button data-key="b" class="bp-b">B</button>
       <button data-key="a" class="bp-a">A</button>
     </div>
   </div>
 </div>
-<script type="module" src="app.js?v=12"></script>
+<script type="module" src="app.js?v=13"></script>
 </body>
 </html>

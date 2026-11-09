@@ -655,12 +655,17 @@ const GAME_LIST = [
   },
   {
     name: 'Maze Raider', emoji: '👾', tickMs: 70,
-    help: '3D first person. ▲▼ walk, ◀▶ turn, A fires, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT fires, Y for the map. From level 2 a red door blocks the way: find the key. Grab the shotgun and reach the green exit. The dot on the top row points to the key (gold) or the exit (green). Green orbs = health, gold orbs = ammo. Watch for bats, spitters, brutes, bombers that explode, ghosts that float through walls, and a boss every 4th level.',
+    usesX: true,
+    help: '3D first person. ▲▼ walk, ◀▶ turn, A attacks, X switches weapon, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT attacks, X switches weapon, Y for the map. Weapons: the axe (close up, no ammo), the blaster, the shotgun (wide spread, from level 2) and the ray gun (shoots through every creature in a line, from level 3). From level 2 a red door blocks the way: find the key, then reach the green exit. The dot on the top row points to the key (gold) or the exit (green). Green orbs = health, gold orbs = ammo. Watch for bats, spitters, brutes, bombers that explode, ghosts that float through walls, and a boss every 4th level.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       const VIEW = 15, MID = VIEW / 2; // rows 0..14 are the 3D view, row 15 is the status bar
       let map, size, px, py, ang, hp = 100, ammo = 24, level = 0, t = 0, muzzle = 0, cool = 0, recoil = 0;
-      let hasKey = false, doorLevel = false, shotgun = false, showMap = false, keyHint = 0, rightStick = false, exitAt = [1, 1];
+      let hasKey = false, doorLevel = false, swing = 0, tracers = [], showMap = false, keyHint = 0, rightStick = false, exitAt = [1, 1];
+      // weapons in switch order; you start with the axe and the blaster
+      const WEP = ['axe', 'blaster', 'shotgun', 'ray'], owned = new Set(['axe', 'blaster']);
+      const WNAME = { axe: 'AXE', blaster: 'PEW', shotgun: 'GUN', ray: 'RAY' };
+      let wep = 'blaster';
       const HP = { grunt: 2, spitter: 2, brute: 5, bat: 1, bomber: 2, ghost: 3, boss: 24 };
       let things = [], shots = [], seen = new Set();
       const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -712,7 +717,7 @@ const GAME_LIST = [
           }
         }
         px = 1.5; py = 1.5; ang = map[1][2] ? Math.PI / 2 : 0;
-        things = []; shots = []; seen = new Set();
+        things = []; shots = []; tracers = []; seen = new Set();
         const spots = cells.filter(([x, y]) => dist[y][x] > 4 && !(keyAt && x === keyAt[0] && y === keyAt[1])).sort(() => Math.random() - 0.5);
         const monsters = 3 + level * 2;
         // more kinds of creature join as you go deeper
@@ -728,12 +733,13 @@ const GAME_LIST = [
         let s = monsters;
         const put = kind => { const p = spots[s++]; if (p) things.push({ kind, x: p[0] + 0.5, y: p[1] + 0.5 }); };
         put('h'); put('h'); put('a'); put('a');
-        if (!shotgun && level >= 2) put('w');
+        if (!owned.has('shotgun') && level >= 2) put('w');
+        if (!owned.has('ray') && level >= 3) put('r');
         if (keyAt) things.push({ kind: 'k', x: keyAt[0] + 0.5, y: keyAt[1] + 0.5 });
         card(g, ['LV', String(level)], WHITE, 1100);
       }
       buildLevel();
-      g.peek = () => ({ map, size, px, py, ang, things, hasKey, doorLevel, level, hp, shotgun }); // for tests
+      g.peek = () => ({ map, size, px, py, ang, things, hasKey, doorLevel, level, hp, wep, owned, ammo }); // for tests
 
       const wall = (x, y) => (x < 0 || y < 0 || x >= size || y >= size) ? 1 : map[Math.floor(y)][Math.floor(x)];
       const free = (x, y) => !wall(x - 0.2, y - 0.2) && !wall(x + 0.2, y - 0.2) && !wall(x - 0.2, y + 0.2) && !wall(x + 0.2, y + 0.2);
@@ -757,8 +763,8 @@ const GAME_LIST = [
       const SPR = {
         grunt: { size: 0.8, w: 0.7, lift: 0 }, brute: { size: 0.95, w: 0.85, lift: 0 }, spitter: { size: 0.75, w: 0.75, lift: 0 },
         bat: { size: 0.3, w: 1.6, lift: 0.45 }, bomber: { size: 0.55, w: 0.85, lift: 0 }, ghost: { size: 0.8, w: 0.7, lift: 0.12 }, boss: { size: 1.15, w: 1, lift: 0 },
-        h: { size: 0.18, w: 1, lift: 0.04 }, a: { size: 0.15, w: 1, lift: 0.04 }, k: { size: 0.28, w: 1.2, lift: 0.25 }, w: { size: 0.22, w: 2.2, lift: 0.25 },
-        p: { size: 0.24, w: 1, lift: 0.4 },
+        h: { size: 0.18, w: 1, lift: 0.04 }, a: { size: 0.15, w: 1, lift: 0.04 }, k: { size: 0.28, w: 1.2, lift: 0.25 }, w: { size: 0.22, w: 2.2, lift: 0.25 }, r: { size: 0.22, w: 2.2, lift: 0.25 },
+        p: { size: 0.18, w: 1, lift: 0.4 },
       };
       const MCOL = { grunt: RED, brute: [150, 70, 220], spitter: GREEN, bat: [255, 140, 50], bomber: P2, ghost: [170, 185, 255], boss: RED };
       function paint(o, u, v) {
@@ -803,13 +809,14 @@ const GAME_LIST = [
             return v >= 0.62 && u > 0.6 && (u * 10 | 0) % 2 ? GOLD : null;
           }
           case 'w': if (v > 0.3 && v < 0.6) return u < 0.35 ? GREY : WHITE; return v >= 0.6 && u > 0.2 && u < 0.38 ? GREY : null;
+          case 'r': if (v > 0.3 && v < 0.6) return u < 0.35 ? GREY : YOU; return v >= 0.6 && u > 0.2 && u < 0.38 ? GREY : null;
           case 'p': return (u - 0.5) ** 2 + (v - 0.5) ** 2 > 0.25 ? null : RED;
         }
         return null;
       }
       function hurt(dmg) { hp -= dmg; flash(g, RED, 2); shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
       function damage(m, n) {
-        m.hp -= n; m.hit = 3; m.alert = true; fx(g, 'hit');
+        m.hp -= n; m.hit = 1; m.alert = true; fx(g, 'hit');
         if (m.hp <= 0) {
           m.dying = 8; m.burst = true; fx(g, 'boom'); g.score += { grunt: 10, spitter: 15, brute: 25, bat: 5, bomber: 15, ghost: 20, boss: 150 }[m.type];
           if (m.type === 'boss') { shake(g, 5); flash(g, WHITE); things.push({ kind: 'h', x: m.x, y: m.y }); }
@@ -943,28 +950,47 @@ const GAME_LIST = [
           if (it.kind === 'h') hp = Math.min(100, hp + 30);
           else if (it.kind === 'a') ammo += 12;
           else if (it.kind === 'k') { hasKey = true; fx(g, 'power'); g.score += 10; card(g, ['KEY'], GOLD, 700, false); }
-          else if (it.kind === 'w') { shotgun = true; ammo += 8; fx(g, 'power'); card(g, ['GUN'], GOLD, 800, false); }
+          else if (it.kind === 'w' || it.kind === 'r') { wep = it.kind === 'w' ? 'shotgun' : 'ray'; owned.add(wep); ammo += 8; fx(g, 'power'); card(g, [WNAME[wep]], GOLD, 800, false); }
         }
 
-        // --- shooting ---
+        // --- weapons ---
         if (cool) cool--;
         if (recoil) recoil--;
-        if ((inp.pressed.has('a') || h.a) && !cool) {
-          if (ammo > 0) {
-            ammo--; muzzle = 2; recoil = 2; fx(g, 'shoot');
-            const live = things.filter(m => m.kind === 'm' && m.hp > 0).map(m => {
-              const rx = m.x - px, ry = m.y - py;
-              return { m, depth: rx * dx + ry * dy, lateral: -rx * dy + ry * dx };
-            }).filter(s => s.depth > 0.2 && sight(px, py, s.m.x, s.m.y));
-            if (shotgun) { // a wide spread that can hit several monsters
-              cool = 9; shake(g, 1);
-              for (const s of live) if (s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2) damage(s.m, s.depth < 3 ? 3 : 2);
-            } else {
-              cool = 4;
-              const best = live.filter(s => Math.abs(s.lateral) < 0.35 && s.depth < Math.max(zbuf[7], zbuf[8]) + 0.3).sort((a, b) => a.depth - b.depth)[0];
-              if (best) damage(best.m, 1);
-            }
-          } else { fx(g, 'click'); cool = 6; }
+        if (swing) swing--;
+        if (inp.pressed.has('x')) { // next weapon you own
+          let i = WEP.indexOf(wep);
+          do i = (i + 1) % WEP.length; while (!owned.has(WEP[i]));
+          wep = WEP[i]; cool = Math.max(cool, 3); fx(g, 'click');
+        }
+        if ((inp.pressed.has('a') || h.a) && !h.x && !cool) {
+          const live = things.filter(m => m.kind === 'm' && m.hp > 0).map(m => {
+            const rx = m.x - px, ry = m.y - py;
+            return { m, depth: rx * dx + ry * dy, lateral: -rx * dy + ry * dx };
+          }).filter(s => s.depth > 0.1 && sight(px, py, s.m.x, s.m.y));
+          const ahead = Math.max(zbuf[7], zbuf[8]);
+          if (wep === 'axe') { // a wide swing that hits everything right in front of you
+            cool = 7; swing = 4; fx(g, 'jump');
+            let hit = false;
+            for (const s of live) if (s.depth < 1.5 && Math.abs(s.lateral) < 0.7) { damage(s.m, 3); hit = true; }
+            if (hit) shake(g, 1);
+          } else if (ammo <= 0) { // out of ammo: back to the axe
+            wep = 'axe'; fx(g, 'click'); cool = 4;
+          } else if (wep === 'shotgun') { // a wide spread that can hit several monsters
+            ammo--; muzzle = 2; recoil = 2; cool = 9; shake(g, 1); fx(g, 'shoot');
+            const hits = live.filter(s => s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2);
+            for (const s of hits) damage(s.m, s.depth < 3 ? 3 : 2);
+            for (const o of [-0.25, 0, 0.25]) { const d0 = Math.min(ahead, 4), c = Math.cos(ang + o), s2 = Math.sin(ang + o); tracers.push({ x: px + c * d0, y: py + s2 * d0, c: GOLD, life: 2 }); }
+          } else if (wep === 'ray') { // a beam that goes through every monster in a line
+            ammo = Math.max(0, ammo - 2); muzzle = 3; recoil = 2; cool = 11; fx(g, 'power');
+            for (const s of live) if (Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3) damage(s.m, 3);
+            tracers.push({ x: px + dx * ahead, y: py + dy * ahead, c: YOU, life: 3, beam: true });
+          } else {
+            ammo--; muzzle = 2; recoil = 2; cool = 4; fx(g, 'shoot');
+            const best = live.filter(s => Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3).sort((a, b) => a.depth - b.depth)[0];
+            if (best) damage(best.m, 1);
+            const e = best ? best.m : { x: px + dx * ahead, y: py + dy * ahead };
+            tracers.push({ x: e.x, y: e.y, c: GOLD, life: 2, spark: !!best });
+          }
         }
 
         // --- sprites, far to near ---
@@ -993,15 +1019,38 @@ const GAME_LIST = [
         }
 
         // --- gun, map, HUD ---
+        // shot trails: one thin line from the gun to where the shot lands, gone after a moment
+        for (const tr of tracers) {
+          const rx = tr.x - px, ry = tr.y - py, ty = Math.max(0.3, dx * rx + dy * ry);
+          const ex = (N / 2) * (1 + (-dy * rx + dx * ry) / (ty * plane)) - 0.5, ey = MID + Math.min(2, 1.5 / ty) - 0.5;
+          const sx0 = 7.5, sy0 = 11.5, n = Math.ceil(Math.max(Math.abs(ex - sx0), Math.abs(ey - sy0)));
+          // a bolt flies out: the near half on the first frame, the far half on the next. The ray beam stays whole.
+          const first = tr.life >= (tr.beam ? 3 : 2), from = tr.beam || first ? 0 : Math.floor(n / 2), to = tr.beam || !first ? n : Math.floor(n / 2);
+          for (let i = from; i <= to; i++) { const k = n ? i / n : 0; set(rgb, Math.round(sx0 + (ex - sx0) * k), Math.round(sy0 + (ey - sy0) * k), tr.c); }
+          if (tr.beam) for (let i = from; i <= to; i++) { const k = n ? i / n : 0; set(rgb, Math.round(sx0 + 1 + (ex - sx0 - 1) * k), Math.round(sy0 + (ey - sy0) * k), tr.c); }
+          if (tr.spark && !first) set(rgb, Math.round(ex), Math.round(ey), WHITE);
+          tr.life--;
+        }
+        tracers = tracers.filter(tr => tr.life > 0);
         const bob = (h.up || h.down) && t % 6 < 3 ? 1 : 0, kick = recoil ? 1 : 0;
-        if (shotgun) {
+        if (wep === 'axe') { // the axe rests at the right and sweeps across when you swing
+          const [ax0, ay0] = [[11, 9], [4, 10], [7, 8], [9, 6], [11, 6]][swing], y0 = ay0 + (swing ? 0 : bob);
+          for (const [ox, oy] of [[0, -1], [0, 0], [1, 1], [1, 2], [2, 3], [2, 4]]) set(rgb, ax0 + ox, y0 + oy, DARK);   // handle
+          for (const [ox, oy] of [[-1, -1], [-2, -1], [-1, 0], [-2, 0], [-3, 0], [-1, 1], [-2, 1]]) set(rgb, ax0 + ox, y0 + oy, WHITE); // blade
+          if (swing === 2) for (let x = 3; x <= 12; x++) set(rgb, x, x < 6 || x > 9 ? 8 : 7, WHITE);   // the sweep
+        } else if (wep === 'shotgun') {
           set(rgb, 7, 12 + bob + kick, WHITE); set(rgb, 8, 12 + bob + kick, WHITE);
           for (let x = 6; x <= 9; x++) { set(rgb, x, 13 + kick, GREY); set(rgb, x, 14, GREY); }
-          if (muzzle) { muzzle--; for (let x = 6; x <= 9; x++) set(rgb, x, 11, GOLD); }
+          if (muzzle) { muzzle--; set(rgb, 7, 11, WHITE); set(rgb, 8, 11, WHITE); }
+        } else if (wep === 'ray') {
+          set(rgb, 7, 12 + bob + kick, YOU); set(rgb, 8, 12 + bob + kick, YOU);
+          set(rgb, 7, 13 + bob, WHITE); set(rgb, 8, 13 + bob, WHITE);
+          for (let x = 6; x <= 9; x++) set(rgb, x, 14, GREY);
+          if (muzzle) muzzle--;
         } else {
           set(rgb, 7, 13 + bob + kick, WHITE); set(rgb, 8, 13 + bob + kick, WHITE);
           set(rgb, 7, 14, GREY); set(rgb, 8, 14, GREY);
-          if (muzzle) { muzzle--; set(rgb, 7, 12, GOLD); set(rgb, 8, 12, GOLD); }
+          if (muzzle) muzzle--;
         }
         if (showMap) {
           // the map shows only places you have seen
