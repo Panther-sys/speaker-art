@@ -26,6 +26,10 @@ function blend(rgb, x, y, c, a) {
   for (let k = 0; k < 3; k++) rgb[i + k] = Math.round(rgb[i + k] * (1 - a) + Math.min(255, c[k]) * a);
 }
 
+// ---------- the clean palette: the same colour means the same thing in every game ----------
+const YOU = [60, 200, 255], P2 = [255, 92, 200], RED = [255, 64, 64], GOLD = [255, 210, 60], GREEN = [60, 220, 90], WHITE = [255, 255, 255], GREY = [110, 115, 128], DARK = [42, 46, 58], NAVY = [16, 32, 60], BLACK = [0, 0, 0];
+const fill = (rgb, c) => { for (let i = 0; i < 768; i += 3) { rgb[i] = c[0]; rgb[i + 1] = c[1]; rgb[i + 2] = c[2]; } };
+
 // ---------- tiny 3x5 font ----------
 const DIGITS = { 0: '111101101101111', 1: '010110010010111', 2: '111001111100111', 3: '111001111001111', 4: '101101111001001', 5: '111100111001111', 6: '111100111101111', 7: '111001010010010', 8: '111101111101111', 9: '111101111001111' };
 const LETTERS = {
@@ -44,14 +48,14 @@ export function drawNumber(rgb, n, y, c) { drawText(rgb, String(n), y, c); }
 // ---------- polish kit ----------
 // particles: burst(g, x, y, colour or [colours], count, {speed, life, grav, up})
 function burst(g, x, y, c, n = 8, o = {}) {
-  const sp = o.speed ?? 0.6, life = o.life ?? 8;
+  const sp = o.speed ?? 0.6, life = Math.min(6, o.life ?? 5);
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, v = sp * (0.3 + Math.random() * 0.7);
-    (g.parts ||= []).push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (o.up ?? 0), grav: o.grav ?? 0, life: Math.max(1, life * (0.6 + Math.random() * 0.6) | 0), max: life, c: Array.isArray(c[0]) ? c[rand(c.length)] : c });
+    (g.parts ||= []).push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (o.up ?? 0), grav: o.grav ?? 0, life: Math.max(1, life * (0.6 + Math.random() * 0.6) | 0), max: life, c: Array.isArray(c[0]) ? c[0] : c });
   }
 }
 const shake = (g, n) => { g.shakeT = Math.max(g.shakeT || 0, n); };
-const flash = (g, c, n = 4) => { g.flashC = c; g.flashT = g.flashMax = n; };
+const flash = (g, c, n = 3) => { g.flashC = c; g.flashT = g.flashMax = Math.min(n, 3); };
 // a banner across the screen, e.g. card(g, ['LV', '2'], colour). hold freezes the game while it shows.
 function card(g, lines, c, ms = 1300, hold = true) {
   g.cardLines = Array.isArray(lines) ? lines : [lines]; g.cardC = c;
@@ -61,9 +65,9 @@ function card(g, lines, c, ms = 1300, hold = true) {
 function drawCard(rgb, g) {
   const lines = g.cardLines, c = g.cardC, age = g.cardMax - g.cardT, two = lines.length > 1;
   const y0 = two ? 1 : 3, y1 = two ? 14 : 11, half = Math.min(8, (age + 1) * 3);
-  for (let y = y0; y <= y1; y++) for (let x = 0; x < N; x++) if (Math.abs(x - 7.5) < half) blend(rgb, x, y, [0, 0, 0], 0.8);
-  for (let x = 0; x < N; x++) if (Math.abs(x - 7.5) < half) { set(rgb, x, y0, dim(c, 0.5)); set(rgb, x, y1, dim(c, 0.5)); }
-  if (age >= 2) lines.forEach((s, i) => drawText(rgb, s, two ? 3 + i * 6 : 5, g.cardT > 3 || g.cardT % 2 ? c : dim(c, 0.5)));
+  for (let y = y0; y <= y1; y++) for (let x = 0; x < N; x++) if (Math.abs(x - 7.5) < half) set(rgb, x, y, BLACK);
+  for (let x = 0; x < N; x++) if (Math.abs(x - 7.5) < half) { set(rgb, x, y0, c); set(rgb, x, y1, c); }
+  if (age >= 2 && (g.cardT > 3 || g.cardT % 2)) lines.forEach((s, i) => drawText(rgb, s, two ? 3 + i * 6 : 5, c));
 }
 function shift(rgb, dx, dy) {
   const src = rgb.slice(); rgb.fill(0);
@@ -82,24 +86,23 @@ function capColors(rgb, max = 64) {
 function drawEnding(rgb, snap, g, p, t) {
   if (g.won) {
     rgb.set(snap);
-    for (let i = 0; i < 256; i++) blend(rgb, i % N, i / N | 0, [0, 0, 0], p * 0.5);
-    const C = [[255, 255, 255], [255, 230, 80], [120, 255, 140], [80, 200, 255]];
-    for (let k = 0; k < 8; k++) set(rgb, rand(N), rand(N), C[rand(4)]);
-    for (let x = 0; x < N; x++) { set(rgb, x, 0, C[(x + t) % 4]); set(rgb, x, 15, C[(x + t + 2) % 4]); }
+    for (let k = 0; k < 6; k++) set(rgb, rand(N), rand(N), GOLD);
+    for (let x = 0; x < N; x++) { set(rgb, x, 0, (x + t) % 4 < 2 ? GREEN : BLACK); set(rgb, x, 15, (x - t + 64) % 4 < 2 ? GREEN : BLACK); }
     return;
   }
+  // the screen crumbles: each column drops away at its own speed, colours stay flat
   rgb.fill(0);
-  const fade = 1 - p * 0.9, red = p < 0.2 ? 110 : 0;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     const i = (y * N + x) * 3, drop = Math.floor(p * p * (3 + hash(x, 7) * 14));
-    if (y + drop < N) set(rgb, x, y + drop, [snap[i] * fade + red, snap[i + 1] * fade * (1 - p * 0.5), snap[i + 2] * fade * (1 - p * 0.5)]);
+    if (y + drop < N) set(rgb, x, y + drop, p < 0.2 && (snap[i] | snap[i + 1] | snap[i + 2]) ? RED : [snap[i], snap[i + 1], snap[i + 2]]);
   }
 }
 function post(g, rgb) {
   const P = g.parts || [];
-  for (const p of P) { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.94; p.life--; blend(rgb, p.x, p.y, p.c, Math.min(1, p.life / p.max * 1.6)); }
+  for (const p of P) { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.94; p.life--; if (p.life > 0) set(rgb, p.x, p.y, p.c); }
   g.parts = P.filter(p => p.life > 0);
-  if (g.flashT > 0) { const k = g.flashT / g.flashMax * 0.55; for (let i = 0; i < 256; i++) blend(rgb, i % N, i / N | 0, g.flashC, k); g.flashT--; }
+  // a flash is a solid frame round the edge, not a tint over the picture
+  if (g.flashT > 0) { for (let k = 0; k < N; k++) { set(rgb, k, 0, g.flashC); set(rgb, k, 15, g.flashC); set(rgb, 0, k, g.flashC); set(rgb, 15, k, g.flashC); } g.flashT--; }
   if (g.cardT > 0) { drawCard(rgb, g); if (!--g.cardT) g.cardBg = null; }
   if (g.shakeT > 0) { g.shakeT--; const dx = rand(3) - 1, dy = rand(3) - 1; if (dx || dy) shift(rgb, dx, dy); }
   capColors(rgb);
@@ -147,7 +150,7 @@ const GAME_LIST = [
           cells.forEach(([a, b]) => rocks.add(K(a, b))); return;
         }
       }
-      card(g, ['LV', '1'], [120, 255, 120], 1000);
+      card(g, ['LV', '1'], GREEN, 1000);
       g.tick = (inp, rgb) => {
         t++;
         // remember up to two quick turns so fast swipes aren't lost
@@ -162,24 +165,21 @@ const GAME_LIST = [
         body.unshift(h);
         if (h[0] === food[0] && h[1] === food[1]) {
           g.score += level; eaten++; grow++; fx(g, 'eat');
-          burst(g, h[0], h[1], [[255, 60, 60], [255, 170, 130]], 6, { speed: 0.5, life: 6 });
+          burst(g, h[0], h[1], RED, 5, { speed: 0.5, life: 4 });
           food = free();
           if (!gold && Math.random() < 0.25) { const p = free(); gold = { x: p[0], y: p[1], life: Math.round(8000 / g.tickMs) }; }
-          if (eaten >= 8) { level++; eaten = 0; addRocks(); if (level > 3) addRocks(); fx(g, 'level'); flash(g, [120, 255, 120], 4); card(g, ['LV', String(level)], [120, 255, 120], 1000); }
+          if (eaten >= 8) { level++; eaten = 0; addRocks(); if (level > 3) addRocks(); fx(g, 'level'); flash(g, GREEN); card(g, ['LV', String(level)], GREEN, 1000); }
           g.tickMs = Math.max(70, 170 - (level - 1) * 14 - eaten * 3);
         }
         if (gold && h[0] === gold.x && h[1] === gold.y) { g.score += 5 * level; grow += 2; fx(g, 'coin'); burst(g, gold.x, gold.y, [[255, 220, 60], [255, 255, 200]], 10, { speed: 0.7 }); gold = null; }
         if (gold && --gold.life <= 0) gold = null;
         if (grow > 0) grow--; else body.pop();
-        // draw: chequered grass, rocks, food, a striped snake with a flicking tongue
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) set(rgb, x, y, (x + y) & 1 ? [5, 14, 9] : [8, 20, 12]);
-        for (const k of rocks) { const x = k % N, y = k / N | 0; set(rgb, x, y, hash(x, y) < 0.5 ? [125, 110, 95] : [95, 85, 75]); }
-        set(rgb, food[0], food[1], t % 6 < 3 ? [255, 40, 40] : [255, 100, 80]);
-        if (gold && (gold.life > 12 || t % 2)) set(rgb, gold.x, gold.y, t % 4 < 2 ? [255, 215, 0] : [255, 255, 170]);
-        const L = body.length;
-        body.forEach(([x, y], i) => { if (i) { const c = mix([40, 230, 90], [10, 90, 60], i / L); set(rgb, x, y, i % 3 === 0 ? dim(c, 1.3) : c); } });
-        set(rgb, body[0][0], body[0][1], [200, 255, 140]);
-        if (t % 8 < 2) { const tx = (h[0] + dir[0] + N) % N, ty = (h[1] + dir[1] + N) % N; if (!busy(tx, ty)) blend(rgb, tx, ty, [255, 60, 120], 0.7); }
+        // draw: black ground, grey rocks, red apple, gold apple, a green snake with a white head
+        rgb.fill(0);
+        for (const k of rocks) set(rgb, k % N, k / N | 0, GREY);
+        set(rgb, food[0], food[1], RED);
+        if (gold && (gold.life > 12 || t % 2)) set(rgb, gold.x, gold.y, GOLD);
+        body.forEach(([x, y], i) => set(rgb, x, y, i ? GREEN : WHITE));
       };
       return g;
     },
@@ -192,7 +192,7 @@ const GAME_LIST = [
       let me = 6, cpu = 6, meW = 4, cpuW = 4, big = 0, cpuBig = 0, bx, by, vx, vy, trail = [], lost = 0, gem = null, last = null, t = 0, wait = 0;
       const serve = d => { bx = 7.5; by = 7.5; vx = (Math.random() < 0.5 ? -1 : 1) * 0.3; vy = 0.4 * d; trail = []; wait = 8; };
       serve(1);
-      card(g, ['GO!'], [80, 200, 255], 800);
+      card(g, ['GO!'], WHITE, 800);
       g.tick = (inp, rgb) => {
         t++;
         if (inp.held.left) me = Math.max(0, me - 0.9);
@@ -206,10 +206,10 @@ const GAME_LIST = [
         if (by >= 14 && vy > 0) {
           if (bx >= me - 0.6 && bx <= me + meW - 0.4) {
             fx(g, 'bounce'); vy = -Math.min(0.9, Math.abs(vy) * 1.05); vx += (bx - (me + meW / 2 - 0.5)) * 0.12; by = 14; last = 'me';
-            burst(g, bx, 14, [80, 200, 255], 5, { speed: 0.4, life: 5 });
+            burst(g, bx, 14, YOU, 3, { speed: 0.4, life: 3 });
           } else if (by > 15.5) {
-            fx(g, 'hurt'); lost++; g.lost = lost; shake(g, 4); flash(g, [255, 90, 120], 4);
-            burst(g, bx, 15, [[255, 90, 120], [255, 255, 255]], 10, { speed: 0.8 });
+            fx(g, 'hurt'); lost++; g.lost = lost; shake(g, 4); flash(g, RED);
+            burst(g, bx, 15, RED, 6, { speed: 0.8 });
             if (lost >= 5) { g.over = true; return; }
             serve(-1);
           }
@@ -217,10 +217,10 @@ const GAME_LIST = [
         if (by <= 1 && vy < 0) {
           if (bx >= cpu - 0.6 && bx <= cpu + cpuW - 0.4) {
             fx(g, 'bounce'); vy = Math.min(0.9, Math.abs(vy) * 1.03); vx += (bx - (cpu + cpuW / 2 - 0.5)) * 0.1; by = 1; last = 'cpu';
-            burst(g, bx, 1, [255, 90, 120], 5, { speed: 0.4, life: 5 });
+            burst(g, bx, 1, RED, 3, { speed: 0.4, life: 3 });
           } else if (by < -0.5) {
-            fx(g, 'score'); g.score++; shake(g, 3); flash(g, [80, 200, 255], 4);
-            burst(g, bx, 0, [[80, 200, 255], [255, 255, 255]], 10, { speed: 0.8 });
+            fx(g, 'score'); g.score++; shake(g, 3); flash(g, YOU);
+            burst(g, bx, 0, YOU, 6, { speed: 0.8 });
             if (g.score >= 5) { g.won = true; g.over = true; return; }
             serve(1);
           }
@@ -231,7 +231,7 @@ const GAME_LIST = [
         if (gem) {
           gem.life--;
           if (last && Math.abs(bx - gem.x) < 1 && Math.abs(by - gem.y) < 1) {
-            fx(g, 'power'); burst(g, gem.x, gem.y, [[255, 230, 80], [255, 255, 255]], 10);
+            fx(g, 'power'); burst(g, gem.x, gem.y, GOLD, 6);
             if (last === 'me') { meW = 6; big = 200; me = Math.min(me, N - meW); } else { cpuW = 6; cpuBig = 200; cpu = Math.min(cpu, N - cpuW); }
             gem = null;
           } else if (gem.life <= 0) gem = null;
@@ -239,35 +239,35 @@ const GAME_LIST = [
         if (big && !--big) meW = 4;
         if (cpuBig && !--cpuBig) cpuW = 4;
         // draw
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) set(rgb, x, y, y === 8 && x % 2 === 0 ? [25, 25, 55] : [3, 4, 12]);
-        if (gem) { const c = [[255, 230, 80], [255, 140, 40], [255, 255, 200], [255, 140, 40]][(t >> 1) % 4]; set(rgb, gem.x, gem.y, c); if (t % 4 < 2) { blend(rgb, gem.x - 1, gem.y, c, 0.35); blend(rgb, gem.x + 1, gem.y, c, 0.35); } }
-        const pad = (x0, w, y, c) => { for (let i = 0; i < w; i++) set(rgb, Math.round(x0) + i, y, i === 0 || i === w - 1 ? dim(c, 0.7) : c); };
-        pad(me, meW, 15, big && (big > 30 || t % 4 < 2) ? [150, 255, 255] : [80, 200, 255]);
-        pad(cpu, cpuW, 0, cpuBig && (cpuBig > 30 || t % 4 < 2) ? [255, 170, 200] : [255, 90, 120]);
-        trail.forEach(([x, y], i) => blend(rgb, x, y, [255, 255, 255], 0.45 - i * 0.1));
-        if (!wait || t % 2) set(rgb, bx, by, [255, 255, 255]);
-        for (let i = 0; i < g.score; i++) set(rgb, 15, 13 - i * 2, [80, 200, 255]);
-        for (let i = 0; i < lost; i++) set(rgb, 15, 2 + i * 2, [255, 90, 120]);
+        rgb.fill(0);
+        for (let x = 0; x < N; x += 2) set(rgb, x, 8, DARK);
+        if (gem && (gem.life > 30 || t % 2)) set(rgb, gem.x, gem.y, GOLD);
+        const pad = (x0, w, y, c, on) => { if (on) for (let i = 0; i < w; i++) set(rgb, Math.round(x0) + i, y, c); };
+        pad(me, meW, 15, YOU, !big || big > 30 || t % 4 < 2);
+        pad(cpu, cpuW, 0, RED, !cpuBig || cpuBig > 30 || t % 4 < 2);
+        if (!wait || t % 2) set(rgb, bx, by, WHITE);
+        for (let i = 0; i < g.score; i++) set(rgb, 15, 13 - i * 2, YOU);
+        for (let i = 0; i < lost; i++) set(rgb, 15, 2 + i * 2, RED);
       };
       return g;
     },
   },
   {
     name: 'Meteor dodge', emoji: '☄️', tickMs: 80,
-    help: 'Hold left or right to dodge the falling rocks. Grab gold stars for points and the blue orb for a shield. It gets faster every level.',
+    help: 'Hold left or right to dodge the falling rocks. Grab gold stars for points and the white orb for a shield. It gets faster every level.',
     create() {
       const g = { score: 0, over: false, tickMs: 80 };
       let x = 7.5, t = 0, rocks = [], items = [], shield = 0, stars = 0, stage = 1, safe = 0;
       const far = Array.from({ length: 10 }, () => ({ x: rand(N), y: Math.random() * N }));
       const near = Array.from({ length: 5 }, () => ({ x: rand(N), y: Math.random() * N }));
-      card(g, ['LV', '1'], [255, 160, 60], 1000);
+      card(g, ['LV', '1'], WHITE, 1000);
       g.tick = (inp, rgb) => {
         t++;
         if (inp.held.left) x = Math.max(1, x - 0.7);
         if (inp.held.right) x = Math.min(N - 2, x + 0.7);
         const s = Math.round(x), cells = [[s, 13], [s - 1, 14], [s, 14], [s + 1, 14]];
         const ns = 1 + Math.floor(t / 300);
-        if (ns > stage) { stage = ns; fx(g, 'level'); card(g, ['LV', String(stage)], [255, 160, 60], 900, false); }
+        if (ns > stage) { stage = ns; fx(g, 'level'); card(g, ['LV', String(stage)], WHITE, 900, false); }
         const d = Math.min(1, t / 1500), speed = 0.25 + d * 0.6;
         if (Math.random() < 0.2 + d * 0.3) {
           const big = stage >= 2 && Math.random() < 0.12 + stage * 0.03;
@@ -278,40 +278,33 @@ const GAME_LIST = [
         items.forEach(i => i.y += 0.25);
         const hits = (cx, cy, r) => { const rx = Math.round(r.x), ry = Math.round(r.y), w = r.big ? 2 : 1; return cx >= rx && cx < rx + w && cy >= ry && cy < ry + w; };
         for (const r of rocks) if (!r.gone && cells.some(([cx, cy]) => hits(cx, cy, r))) {
-          r.gone = true; burst(g, r.x, r.y, [[255, 140, 40], [255, 220, 120], [120, 60, 30]], r.big ? 14 : 8, { speed: 0.7 });
+          r.gone = true; burst(g, r.x, r.y, RED, r.big ? 8 : 5, { speed: 0.7 });
           if (safe) continue;
-          if (shield) { shield = 0; safe = 12; fx(g, 'boom'); shake(g, 3); flash(g, [80, 220, 255], 3); }
-          else { fx(g, 'boom'); burst(g, x, 14, [[120, 220, 255], [255, 255, 255]], 12); g.over = true; return; }
+          if (shield) { shield = 0; safe = 12; fx(g, 'boom'); shake(g, 3); flash(g, YOU); }
+          else { fx(g, 'boom'); burst(g, x, 14, YOU, 8); g.over = true; return; }
         }
         for (const it of items) if (!it.gone && cells.some(([cx, cy]) => cx === Math.round(it.x) && Math.abs(cy - it.y) < 1)) {
           it.gone = true;
-          if (it.kind === 'star') { stars++; fx(g, 'coin'); burst(g, it.x, it.y, [255, 230, 80], 6, { speed: 0.4, life: 6 }); }
-          else { shield = 1; fx(g, 'power'); burst(g, it.x, it.y, [80, 220, 255], 8); }
+          if (it.kind === 'star') { stars++; fx(g, 'coin'); burst(g, it.x, it.y, GOLD, 4, { speed: 0.4, life: 4 }); }
+          else { shield = 1; fx(g, 'power'); burst(g, it.x, it.y, WHITE, 5); }
         }
         if (safe) safe--;
         rocks = rocks.filter(r => !r.gone && r.y < N + 1);
         items = items.filter(i => !i.gone && i.y < N + 1);
         g.score = Math.floor(t / 12) + stars * 5;
         // draw: deep space with two layers of stars sliding past
-        for (let y = 0; y < N; y++) for (let xx = 0; xx < N; xx++) set(rgb, xx, y, [2, 2, 8 + (y >> 2) * 3]);
-        for (const st of far) { st.y = (st.y + 0.06) % N; set(rgb, st.x, st.y, [30, 30, 60]); }
-        for (const st of near) { st.y += 0.2; if (st.y >= N) { st.y = 0; st.x = rand(N); } set(rgb, st.x, st.y, [80, 80, 120]); }
+        rgb.fill(0);
+        for (const st of far) { st.y = (st.y + 0.06) % N; set(rgb, st.x, st.y, DARK); }
+        for (const st of near) { st.y += 0.2; if (st.y >= N) { st.y = 0; st.x = rand(N); } set(rgb, st.x, st.y, DARK); }
         for (const r of rocks) {
-          const rx = Math.round(r.x), y0 = Math.floor(r.y), f = r.y - y0;
-          if (r.big) {
-            for (let k = 1; k <= 2; k++) { blend(rgb, rx, y0 - k, [255, 100, 30], 0.5 / k); blend(rgb, rx + 1, y0 - k, [255, 100, 30], 0.5 / k); }
-            set(rgb, rx, y0, [255, 170, 80]); set(rgb, rx + 1, y0, [190, 95, 45]); set(rgb, rx, y0 + 1, [190, 95, 45]); set(rgb, rx + 1, y0 + 1, [130, 60, 30]);
-          } else {
-            blend(rgb, rx, y0 - 1, [255, 90, 20], 0.45); blend(rgb, rx, y0 - 2, [255, 90, 20], 0.2);
-            blend(rgb, rx, y0, [255, 150, 50], 1 - f); blend(rgb, rx, y0 + 1, [255, 150, 50], f);
-          }
+          const rx = Math.round(r.x), ry = Math.round(r.y);
+          set(rgb, rx, ry, RED);
+          if (r.big) { set(rgb, rx + 1, ry, RED); set(rgb, rx, ry + 1, RED); set(rgb, rx + 1, ry + 1, RED); }
         }
-        for (const it of items) set(rgb, it.x, it.y, it.kind === 'star' ? (t % 4 < 2 ? [255, 230, 80] : [255, 255, 200]) : (t % 4 < 2 ? [80, 220, 255] : [200, 250, 255]));
+        for (const it of items) set(rgb, it.x, it.y, it.kind === 'star' ? GOLD : WHITE);
         if (!safe || t % 2) {
-          const wing = shield ? [80, 255, 255] : [120, 220, 255];
-          set(rgb, s, 13, [255, 255, 255]); set(rgb, s - 1, 14, wing); set(rgb, s, 14, dim(wing, 0.8)); set(rgb, s + 1, 14, wing);
-          set(rgb, s, 15, t % 2 ? [255, 160, 0] : [255, 80, 0]);
-          if (shield && t % 4 < 2) { blend(rgb, s - 1, 13, [80, 220, 255], 0.5); blend(rgb, s + 1, 13, [80, 220, 255], 0.5); blend(rgb, s, 12, [80, 220, 255], 0.5); }
+          set(rgb, s, 13, WHITE); set(rgb, s - 1, 14, YOU); set(rgb, s, 14, YOU); set(rgb, s + 1, 14, YOU);
+          if (shield) { set(rgb, s - 1, 13, YOU); set(rgb, s + 1, 13, YOU); set(rgb, s, 12, YOU); set(rgb, s - 2, 14, YOU); set(rgb, s + 2, 14, YOU); }
         }
       };
       return g;
@@ -319,18 +312,16 @@ const GAME_LIST = [
   },
   {
     name: 'Hop', emoji: '🐤', tickMs: 70,
-    help: 'Tap A (or tap the screen) to flap. Fly through the gaps and grab the coins. The sky turns to sunset and night as you go.',
+    help: 'Tap A (or tap the screen) to flap. Fly through the gaps and grab the gold coins.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       const GAP = 5, FLOOR = 15;
       let y = 7, v = 0, t = 0, walls = [{ x: 17, gap: 5, coin: false }], flapT = 0, dist = 0;
-      const city = Array.from({ length: 32 }, (_, i) => 2 + ((i * 7) % 5) + (i % 3));
-      const SKIES = [[[40, 90, 170], [130, 190, 240]], [[90, 40, 100], [255, 150, 80]], [[4, 6, 26], [26, 34, 80]]];
-      card(g, ['GO!'], [255, 220, 0], 700);
-      const die = () => { shake(g, 4); fx(g, 'hurt'); burst(g, 4.5, y, [[255, 220, 0], [255, 255, 255], [255, 120, 0]], 12, { speed: 0.7, life: 9, grav: 0.05 }); g.over = true; };
+            card(g, ['GO!'], WHITE, 700);
+      const die = () => { shake(g, 4); fx(g, 'hurt'); burst(g, 4.5, y, YOU, 8, { speed: 0.7, grav: 0.05 }); g.over = true; };
       g.tick = (inp, rgb) => {
         t++;
-        if (inp.pressed.has('a') || inp.pressed.has('up')) { v = -0.8; flapT = 4; fx(g, 'flap'); burst(g, 3, y + 1, [220, 220, 220], 2, { speed: 0.25, life: 4 }); }
+        if (inp.pressed.has('a') || inp.pressed.has('up')) { v = -0.8; flapT = 4; fx(g, 'flap');  }
         v = Math.min(0.75, v + 0.12); y += v; if (flapT) flapT--;
         const speed = 0.3 + Math.min(0.15, g.score * 0.01); dist += speed;
         walls.forEach(w => w.x -= speed);
@@ -343,42 +334,20 @@ const GAME_LIST = [
         for (const w of walls) {
           if (!w.scored && w.x + 2 < 4) { w.scored = true; g.score++; fx(g, 'score'); }
           if (w.coin && !w.got && Math.abs(w.x + 1 - 4.5) < 1.2 && Math.abs(y + 0.5 - (w.gap + 2.5)) < 1.5) {
-            w.got = true; g.score += 3; fx(g, 'coin'); burst(g, 5, w.gap + 2, [[255, 220, 60], [255, 255, 200]], 7, { speed: 0.5, life: 6 });
+            w.got = true; g.score += 3; fx(g, 'coin'); burst(g, 5, w.gap + 2, GOLD, 4, { speed: 0.5, life: 4 });
           }
           if (w.x < 5 && w.x + 2 > 4 && (y < w.gap - 0.3 || y + 1 > w.gap + GAP + 0.3)) return die();
         }
-        // sky colour drifts from day to sunset to night every 10 points
-        const ph = Math.floor(g.score / 10) % 3, k = Math.max(0, ((g.score % 10) - 7) / 3);
-        const top = mix(SKIES[ph][0], SKIES[(ph + 1) % 3][0], k), bot = mix(SKIES[ph][1], SKIES[(ph + 1) % 3][1], k);
-        const night = ph === 2 ? 1 - k : ph === 1 ? k : 0;
-        for (let yy = 0; yy < FLOOR; yy++) { const c = mix(top, bot, yy / FLOOR); for (let x = 0; x < N; x++) set(rgb, x, yy, c); }
-        if (night > 0.3) for (let i = 0; i < 7; i++) set(rgb, (i * 5 + 3) % N, (i * 3) % 7, [200, 200, 230]);
-        set(rgb, 12, 2, night > 0.5 ? [230, 230, 255] : ph === 1 ? [255, 180, 90] : [255, 240, 150]); set(rgb, 13, 2, night > 0.5 ? [180, 180, 210] : [255, 220, 120]);
-        // drifting clouds and a city skyline behind the pipes
-        for (let i = 0; i < 3; i++) { const cx = ((i * 9 - dist * 0.15) % 27 + 27) % 27 - 5, cy = 1 + i * 2; for (let d = 0; d < 3; d++) blend(rgb, cx + d, cy, [235, 240, 250], 0.7 - night * 0.5); blend(rgb, cx + 1, cy - 1, [235, 240, 250], 0.6 - night * 0.45); }
-        const bldg = mix(bot, [10, 10, 25], 0.6);
-        for (let sx = 0; sx < N; sx++) {
-          const wx = Math.floor(sx + dist * 0.35), hgt = city[wx % 32];
-          for (let yy = FLOOR - hgt; yy < FLOOR; yy++) set(rgb, sx, yy, night > 0.5 && hash(wx, yy) < 0.18 ? [255, 220, 120] : bldg);
-        }
-        // pipes with soft edges and bright caps
+        // flat navy sky, green pipes, brown ground, gold coins, and you in cyan
+        fill(rgb, NAVY);
         for (const w of walls) {
-          const x0 = Math.floor(w.x), f = w.x - x0;
-          for (let yy = 0; yy < FLOOR; yy++) {
-            if (yy >= w.gap && yy < w.gap + GAP) continue;
-            const cap = yy === w.gap - 1 || yy === w.gap + GAP;
-            blend(rgb, x0, yy, cap ? [150, 255, 140] : [70, 220, 100], 1 - f);
-            blend(rgb, x0 + 1, yy, cap ? [110, 240, 110] : [35, 170, 65], 1);
-            blend(rgb, x0 + 2, yy, cap ? [60, 190, 70] : [20, 120, 45], f);
-          }
-          if (w.coin && !w.got) set(rgb, Math.round(w.x + 1), w.gap + 2, t % 6 < 4 ? [255, 215, 0] : [255, 255, 180]);
+          const x0 = Math.round(w.x);
+          for (let yy = 0; yy < FLOOR; yy++) if (yy < w.gap || yy >= w.gap + GAP) { set(rgb, x0, yy, GREEN); set(rgb, x0 + 1, yy, GREEN); }
+          if (w.coin && !w.got) set(rgb, Math.round(w.x + 1), w.gap + 2, GOLD);
         }
-        for (let sx = 0; sx < N; sx++) set(rgb, sx, FLOOR, (sx + Math.floor(dist)) % 4 < 2 ? [210, 170, 90] : [170, 130, 60]);
-        // the bird, spread over two rows by its exact height, with a flapping wing
-        const y0 = Math.floor(y), fy = y - y0;
-        blend(rgb, 4, y0, [255, 220, 0], 1 - fy); blend(rgb, 4, y0 + 1, [255, 220, 0], fy);
-        blend(rgb, 5, y0, [255, 120, 0], 1 - fy); blend(rgb, 5, y0 + 1, [255, 120, 0], fy);
-        set(rgb, 3, Math.round(y) + (flapT > 1 ? -1 : 0), [255, 245, 190]);
+        for (let sx = 0; sx < N; sx++) set(rgb, sx, FLOOR, [138, 106, 58]);
+        const by = Math.round(y);
+        set(rgb, 4, by, YOU); set(rgb, 5, by, WHITE);
       };
       return g;
     },
@@ -436,12 +405,11 @@ const GAME_LIST = [
 
       let x = 3, y = GROUND - 2, vx = 0, vy = 0, onGround = false, cam = 0, lives = 3, hurt = 0, t = 0, maxX = 0, coins = 0, stomps = 0, bricks = 0, level = 1, star = 0;
       const W = 0.8; // hero is 0.8 wide, 2 tall
-      const RAINBOW = [[255, 80, 80], [255, 200, 40], [80, 255, 120], [80, 200, 255], [220, 100, 255]];
-      card(g, ['LV', '1'], [255, 215, 0], 1000);
+      card(g, ['LV', '1'], WHITE, 1000);
 
       function loseLife() {
         lives--; navigator.vibrate?.(120); fx(g, 'hurt'); shake(g, 4);
-        burst(g, x - cam, y + 1, [[255, 220, 150], [40, 200, 255], [255, 255, 255]], 10, { speed: 0.6, grav: 0.04 });
+        burst(g, x - cam, y + 1, YOU, 8, { speed: 0.6, grav: 0.04 });
         if (!lives) { g.over = true; return; }
         // respawn on the next safe ground in view
         let rx = Math.max(cam + 1, Math.floor(x) - 2);
@@ -449,7 +417,7 @@ const GAME_LIST = [
         x = rx; y = GROUND - 2; vx = vy = 0; hurt = 25;
         cam = Math.max(cam, Math.floor(x) - 5);
       }
-      function kill(e) { e.alive = false; stomps++; fx(g, 'stomp'); burst(g, e.x - cam, e.y, [[200, 60, 220], [255, 255, 255]], 8, { speed: 0.5 }); }
+      function kill(e) { e.alive = false; stomps++; fx(g, 'stomp'); burst(g, e.x - cam, e.y, RED, 5, { speed: 0.5 }); }
 
       g.tick = (inp, rgb) => {
         t++;
@@ -469,7 +437,7 @@ const GAME_LIST = [
           if (vx < 0 && solid(nx, yy)) { nx = Math.floor(nx) + 1; vx = 0; }
         }
         x = nx;
-        const wasGround = onGround, fall = vy;
+        
         let ny = y + vy; onGround = false;
         if (vy > 0 && (solid(x + 0.05, ny + 2) || solid(x + W - 0.05, ny + 2))) { ny = Math.floor(ny + 2) - 2; vy = 0; onGround = true; }
         if (vy < 0 && (solid(x + 0.05, ny) || solid(x + W - 0.05, ny))) {
@@ -477,29 +445,27 @@ const GAME_LIST = [
           const by = Math.floor(ny);
           for (const bx of new Set([Math.floor(x + 0.05), Math.floor(x + W - 0.05)])) {
             const c = cols[bx]; if (!c) continue;
-            if (c[by] === 'B' && c[by - 1] === 'C') { c[by - 1] = '.'; coins++; fx(g, 'coin'); burst(g, bx - cam, by - 1, [255, 215, 0], 5, { speed: 0.4, up: 0.3 }); }
+            if (c[by] === 'B' && c[by - 1] === 'C') { c[by - 1] = '.'; coins++; fx(g, 'coin'); burst(g, bx - cam, by - 1, GOLD, 4, { speed: 0.4, up: 0.3 }); }
             else if (c[by] === 'Q') {
               c[by] = 'U';
-              if (Math.random() < 0.3) { star = 150; fx(g, 'power'); burst(g, bx - cam, by - 1, RAINBOW, 12, { speed: 0.7 }); }
-              else { coins += 3; fx(g, 'coin'); burst(g, bx - cam, by - 1, [[255, 215, 0], [255, 255, 180]], 9, { speed: 0.5, up: 0.4, grav: 0.05 }); }
-            } else if (c[by] === 'B') { c[by] = '.'; bricks++; fx(g, 'brick'); burst(g, bx - cam, by, [[190, 100, 40], [120, 60, 25]], 8, { speed: 0.5, grav: 0.08, up: 0.3 }); }
+              if (Math.random() < 0.3) { star = 150; fx(g, 'power'); burst(g, bx - cam, by - 1, GOLD, 8, { speed: 0.7 }); }
+              else { coins += 3; fx(g, 'coin'); burst(g, bx - cam, by - 1, GOLD, 6, { speed: 0.5, up: 0.4, grav: 0.05 }); }
+            } else if (c[by] === 'B') { c[by] = '.'; bricks++; fx(g, 'brick'); burst(g, bx - cam, by, [210, 120, 45], 5, { speed: 0.5, grav: 0.08, up: 0.3 }); }
           }
           ny = Math.floor(ny) + 1; vy = 0;
         }
         y = ny;
-        if (onGround && !wasGround && fall > 0.5) burst(g, x + W / 2 - cam, y + 2, [150, 120, 90], 3, { speed: 0.3, life: 4 });
-
+        
         if (y > N) { loseLife(); if (g.over) return; }
         for (const [cx, cy] of [[x + 0.1, y + 0.2], [x + W - 0.1, y + 0.2], [x + 0.1, y + 1.8], [x + W - 0.1, y + 1.8]]) {
           const k = cell(cx, cy);
-          if (k === 'C') { cols[Math.floor(cx)][Math.floor(cy)] = '.'; coins++; fx(g, 'coin'); burst(g, Math.floor(cx) - cam, Math.floor(cy), [255, 215, 0], 4, { speed: 0.35, life: 5 }); }
+          if (k === 'C') { cols[Math.floor(cx)][Math.floor(cy)] = '.'; coins++; fx(g, 'coin'); burst(g, Math.floor(cx) - cam, Math.floor(cy), GOLD, 3, { speed: 0.35, life: 3 }); }
           if (k === 'S' && !hurt && !star) { loseLife(); if (g.over) return; break; }
         }
         // flags: a new level
         if (flags.length && x > flags[0]) {
-          flags.shift(); level++; fx(g, 'level'); flash(g, [255, 215, 0], 4);
-          burst(g, x - cam, 4, RAINBOW, 14, { speed: 0.8 });
-          card(g, ['LV', String(level)], [255, 215, 0], 900);
+          flags.shift(); level++; fx(g, 'level'); flash(g, GREEN);
+                    card(g, ['LV', String(level)], WHITE, 900);
         }
         // enemies
         for (const e of enemies) {
@@ -524,55 +490,41 @@ const GAME_LIST = [
         generate(cam + 40);
         g.score = Math.floor(maxX / 2) + coins * 5 + stomps * 10 + bricks + (level - 1) * 50;
 
-        // --- draw ---
-        for (let sy = 0; sy < N; sy++) { const c = [[8, 10, 36], [14, 20, 60], [22, 34, 86], [34, 52, 110]][Math.min(3, sy >> 2)]; for (let sx = 0; sx < N; sx++) set(rgb, sx, sy, c); }
-        set(rgb, 12, 2, [230, 230, 200]); set(rgb, 13, 2, [200, 200, 170]); set(rgb, 12, 3, [200, 200, 170]);
-        for (let i = 0; i < 3; i++) { const cx = ((i * 11 - cam * 0.3) % 33 + 33) % 33 - 5, cy = 3 + (i % 2) * 2; for (let d = 0; d < 3; d++) blend(rgb, cx + d, cy, [120, 130, 180], 0.6); blend(rgb, cx + 1, cy - 1, [120, 130, 180], 0.5); }
-        for (let sx = 0; sx < N; sx++) {
-          const h = 10 + Math.round(Math.sin((sx + cam * 0.5) * 0.35) * 1.5);
-          for (let sy = h; sy < N; sy++) set(rgb, sx, sy, [20, 60, 70]);
-        }
+        // --- draw: flat sky, green grass, brown dirt, orange blocks, gold coins, red danger ---
+        fill(rgb, NAVY);
         for (let sx = 0; sx < N; sx++) {
           const wx = cam + sx, c = cols[wx]; if (!c) continue;
           for (let sy = 0; sy < N; sy++) {
             const k = c[sy];
-            if (k === 'G') {
-              if (sy === 0 || c[sy - 1] !== 'G') set(rgb, sx, sy, [60, 200, 70]);
-              else set(rgb, sx, sy, hash(wx, sy) < 0.2 ? [90, 55, 28] : [110, 70, 35]);
-              if (sy > 0 && c[sy - 1] === '.' && hash(wx, 99) < 0.12) set(rgb, sx, sy - 1, [255, 220, 80]);
-            }
-            else if (k === 'B') set(rgb, sx, sy, (wx + sy) % 2 ? [190, 100, 40] : [160, 80, 30]);
-            else if (k === 'Q') set(rgb, sx, sy, t % 10 < 7 ? [255, 200, 40] : [200, 140, 20]);
-            else if (k === 'U') set(rgb, sx, sy, [120, 90, 60]);
-            else if (k === 'S') set(rgb, sx, sy, [230, 230, 240]);
-            else if (k === 'C') set(rgb, sx, sy, t % 8 < 6 ? [255, 215, 0] : [255, 255, 180]);
-            else if (k === 'F') set(rgb, sx, sy, [220, 220, 220]);
+            if (k === 'G') set(rgb, sx, sy, sy === 0 || c[sy - 1] !== 'G' ? GREEN : [122, 78, 38]);
+            else if (k === 'B') set(rgb, sx, sy, [210, 120, 45]);
+            else if (k === 'Q') set(rgb, sx, sy, GOLD);
+            else if (k === 'U') set(rgb, sx, sy, GREY);
+            else if (k === 'S') set(rgb, sx, sy, RED);
+            else if (k === 'C') set(rgb, sx, sy, GOLD);
+            else if (k === 'F') set(rgb, sx, sy, WHITE);
           }
-          if (c[3] === 'F' && flags.includes(wx)) { const wave = t % 8 < 4; set(rgb, sx + 1, 3, [60, 220, 90]); set(rgb, sx + 1, 4, [60, 220, 90]); set(rgb, sx + 2, wave ? 3 : 4, [40, 170, 70]); }
+          if (c[3] === 'F' && flags.includes(wx)) { set(rgb, sx + 1, 3, GREEN); set(rgb, sx + 1, 4, GREEN); set(rgb, sx + 2, 3, GREEN); }
         }
         for (const e of enemies) if (e.alive) {
-          const ex = e.x - cam, e0 = Math.floor(ex), f = ex - e0;
-          if (e.fly) {
-            const ey = Math.round(e.y), up = (t >> 2) % 2;
-            set(rgb, ex, ey, [150, 110, 230]); blend(rgb, ex - 1, ey - up, [110, 80, 190], 0.9); blend(rgb, ex + 1, ey - up, [110, 80, 190], 0.9);
-          } else {
-            const c = (t >> 2) % 2 ? [200, 60, 220] : [170, 45, 190];
-            blend(rgb, e0, e.y, c, 1 - f); blend(rgb, e0 + 1, e.y, c, f);
-          }
+          const ex = Math.round(e.x - cam), ey = Math.round(e.y);
+          set(rgb, ex, ey, RED);
+          if (e.fly && (t >> 2) % 2) { set(rgb, ex - 1, ey - 1, RED); set(rgb, ex + 1, ey - 1, RED); }
+          else if (e.fly) { set(rgb, ex - 1, ey, RED); set(rgb, ex + 1, ey, RED); }
         }
         if (!hurt || t % 4 < 2) {
-          const hx = Math.floor(x + W / 2 - cam), hy = Math.round(y);
-          set(rgb, hx, hy, star ? RAINBOW[t % 5] : [255, 220, 150]);
-          set(rgb, hx, hy + 1, star ? RAINBOW[(t + 2) % 5] : [40, 200, 255]);
+          const hx = Math.floor(x + W / 2 - cam), hy = Math.round(y), sc = star && t % 4 < 2 ? GOLD : null;
+          set(rgb, hx, hy, sc || WHITE);
+          set(rgb, hx, hy + 1, sc || YOU);
         }
-        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 0, [255, 60, 90]);
+        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 0, WHITE);
       };
       return g;
     },
   },
   {
     name: 'Star Blaster', emoji: '🚀', tickMs: 70,
-    help: 'Hold ◀ ▶ to fly, hold A to fire. Clear each wave of invaders. Every 5th wave is a boss. Green stars give double shots, blue orbs a shield. 3 lives.',
+    help: 'Hold ◀ ▶ to fly, hold A to fire. Clear each wave of invaders. Every 5th wave is a boss. Gold stars give double shots, white orbs a shield. 3 lives.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       let sx = 7, lives = 3, t = 0, cool = 0, hurt = 0, power = 0, shield = 0, wave = 0, boss = null;
@@ -584,9 +536,9 @@ const GAME_LIST = [
         if (wave % 5 === 0) {
           const hp = 24 + wave * 4;
           boss = { x: 7.5, y: -3, hp, max: hp, dir: 1, cool: 30, hit: 0 };
-          return card(g, ['BOSS'], [255, 70, 90], 1200);
+          return card(g, ['BOSS'], RED, 1200);
         }
-        card(g, ['WAVE', String(wave)], [80, 200, 255], 1000);
+        card(g, ['WAVE', String(wave)], WHITE, 1000);
         const kind = wave % 3, n = Math.min(10, 4 + wave);
         for (let i = 0; i < n; i++) foes.push({
           x: kind === 0 ? 2 + (i % 5) * 3 : rand(14) + 1,
@@ -596,9 +548,9 @@ const GAME_LIST = [
       }
       const ship = () => Math.round(sx);
       function hitMe() {
-        if (shield) { shield = 0; hurt = 12; fx(g, 'hit'); burst(g, sx, 14, [80, 220, 255], 10); return; }
-        hurt = 20; lives--; fx(g, 'hurt'); shake(g, 4); flash(g, [255, 60, 60], 3);
-        burst(g, sx, 14, [[80, 200, 255], [255, 255, 255]], 10); navigator.vibrate?.(120);
+        if (shield) { shield = 0; hurt = 12; fx(g, 'hit'); burst(g, sx, 14, YOU, 6); return; }
+        hurt = 20; lives--; fx(g, 'hurt'); shake(g, 4); flash(g, RED);
+        burst(g, sx, 14, YOU, 8); navigator.vibrate?.(120);
         if (!lives) g.over = true;
       }
       g.tick = (inp, rgb) => {
@@ -638,16 +590,16 @@ const GAME_LIST = [
             if (f.hp > 0 && Math.abs(Math.round(f.x) - s.x) <= 0.5 && s.y <= f.y + 1 && s.y >= f.y - 1) {
               s.y = -9; f.hp--;
               if (!f.hp) {
-                burst(g, f.x, f.y, [[255, 160, 40], [255, 255, 160]], 7); g.score += 10; fx(g, 'boom');
+                burst(g, f.x, f.y, RED, 5); g.score += 10; fx(g, 'boom');
                 if (Math.random() < 0.1) drops.push({ x: Math.round(f.x), y: f.y, kind: Math.random() < 0.6 ? 'P' : 'S' });
               }
             }
           }
           if (boss && s.y > -5 && Math.abs(s.x - Math.round(boss.x)) <= 2 && s.y >= boss.y - 0.5 && s.y <= boss.y + 2.5) {
-            s.y = -9; boss.hp--; boss.hit = 2; fx(g, 'hit'); burst(g, s.x, boss.y + 2, [255, 200, 120], 3, { speed: 0.4, life: 4 });
+            s.y = -9; boss.hp--; boss.hit = 2; fx(g, 'hit'); burst(g, s.x, boss.y + 2, GOLD, 2, { speed: 0.4, life: 3 });
             if (boss.hp <= 0) {
-              for (let k = 0; k < 3; k++) burst(g, boss.x - 2 + k * 2, boss.y + 1, [[255, 70, 90], [255, 220, 120], [255, 255, 255]], 10, { speed: 0.9, life: 12 });
-              shake(g, 6); flash(g, [255, 255, 255], 4); fx(g, 'boom'); g.score += 100 + wave * 10;
+              for (let k = 0; k < 3; k++) burst(g, boss.x - 2 + k * 2, boss.y + 1, RED, 6, { speed: 0.9 });
+              shake(g, 6); flash(g, WHITE); fx(g, 'boom'); g.score += 100 + wave * 10;
               drops.push({ x: Math.round(boss.x), y: boss.y + 1, kind: 'P' }); boss = null;
             }
           }
@@ -655,13 +607,13 @@ const GAME_LIST = [
         const sh = ship();
         const hitShip = (x, y) => Math.abs(x - sh) <= 1 && y >= 13.5 && y < 16;
         for (const d of drops) if (Math.abs(d.x - sh) <= 1 && d.y >= 13) {
-          d.y = 99; fx(g, 'power'); burst(g, d.x, 14, d.kind === 'P' ? [60, 255, 120] : [80, 220, 255], 8);
+          d.y = 99; fx(g, 'power'); burst(g, d.x, 14, d.kind === 'P' ? GOLD : WHITE, 5);
           if (d.kind === 'P') power = 25; else shield = 1;
         }
         if (!hurt) {
           let hit = false;
           for (const b of bombs) if (hitShip(Math.round(b.x), b.y)) { b.y = 99; hit = true; }
-          for (const f of foes) if (f.hp > 0 && (hitShip(Math.round(f.x), f.y) || f.y > 15.5)) { f.hp = 0; burst(g, f.x, f.y, [255, 80, 80], 6); hit = true; }
+          for (const f of foes) if (f.hp > 0 && (hitShip(Math.round(f.x), f.y) || f.y > 15.5)) { f.hp = 0; burst(g, f.x, f.y, RED, 4); hit = true; }
           if (hit) { hitMe(); if (g.over) return; }
         }
         if (hurt) hurt--;
@@ -671,46 +623,45 @@ const GAME_LIST = [
         drops = drops.filter(d => d.y < 16);
         stars.forEach(s => { s.y += s.v; if (s.y >= N) { s.y = 0; s.x = rand(N); } });
 
-        // draw
+        // draw: red invaders and bombs, gold shots and power-ups, you in cyan
         rgb.fill(0);
-        for (const s of stars) set(rgb, s.x, s.y, s.v > 0.25 ? [70, 70, 110] : [35, 35, 60]);
-        for (const d of drops) set(rgb, d.x, d.y, t % 4 < 2 ? (d.kind === 'P' ? [60, 255, 120] : [80, 220, 255]) : [220, 255, 230]);
+        for (const s of stars) set(rgb, s.x, s.y, DARK);
+        for (const d of drops) set(rgb, d.x, d.y, d.kind === 'P' ? GOLD : WHITE);
         for (const f of foes) {
-          const c = f.hp > 1 ? [255, 255, 255] : [[255, 70, 140], [255, 200, 40], [170, 90, 255]][f.kind];
-          blend(rgb, Math.round(f.x), Math.floor(f.y), c, 1 - (f.y % 1));
-          blend(rgb, Math.round(f.x), Math.floor(f.y) + 1, c, f.y % 1);
-          if (t % 6 < 3) { set(rgb, Math.round(f.x) - 1, Math.round(f.y), dim(c, 0.5)); set(rgb, Math.round(f.x) + 1, Math.round(f.y), dim(c, 0.5)); }
+          const fx0 = Math.round(f.x), fy = Math.round(f.y);
+          set(rgb, fx0, fy, RED);
+          if (t % 6 < 3) { set(rgb, fx0 - 1, fy, RED); set(rgb, fx0 + 1, fy, RED); } else { set(rgb, fx0 - 1, fy - 1, RED); set(rgb, fx0 + 1, fy - 1, RED); }
+          if (f.hp > 1) set(rgb, fx0, fy - 1, WHITE);
         }
         if (boss) {
-          const bx = Math.round(boss.x), by = Math.round(boss.y), body = boss.hit ? [255, 255, 255] : [200, 50, 90], wing = boss.hit ? [255, 255, 255] : [130, 30, 70];
-          for (let d = -1; d <= 1; d++) set(rgb, bx + d, by, body);
-          for (let d = -2; d <= 2; d++) set(rgb, bx + d, by + 1, Math.abs(d) === 2 ? wing : body);
-          set(rgb, bx - 2, by + 2, wing); set(rgb, bx, by + 2, [255, 220, 80]); set(rgb, bx + 2, by + 2, wing);
-          set(rgb, bx, by, t % 6 < 3 ? [255, 230, 80] : [255, 140, 40]);
+          const bx = Math.round(boss.x), by = Math.round(boss.y), c = boss.hit ? WHITE : RED;
+          for (let d = -1; d <= 1; d++) set(rgb, bx + d, by, c);
+          for (let d = -2; d <= 2; d++) set(rgb, bx + d, by + 1, c);
+          set(rgb, bx - 2, by + 2, c); set(rgb, bx + 2, by + 2, c);
+          set(rgb, bx - 1, by + 1, WHITE); set(rgb, bx + 1, by + 1, WHITE);
           const bar = Math.ceil(boss.hp / boss.max * 12);
-          for (let x = 0; x < 12; x++) set(rgb, x, 0, x < bar ? [255, 70, 90] : [40, 10, 20]);
+          for (let x = 0; x < bar; x++) set(rgb, x, 0, WHITE);
         }
-        for (const s of shots) { set(rgb, s.x, s.y, [255, 255, 160]); set(rgb, s.x, s.y + 1, [140, 120, 40]); }
-        for (const b of bombs) set(rgb, b.x, b.y, t % 4 < 2 ? [255, 60, 60] : [255, 140, 120]);
+        for (const s of shots) set(rgb, s.x, s.y, GOLD);
+        for (const b of bombs) set(rgb, b.x, b.y, RED);
         if (!hurt || t % 4 < 2) {
-          const c = power ? [60, 255, 120] : [80, 200, 255];
-          set(rgb, sh, 14, [255, 255, 255]); set(rgb, sh - 1, 15, c); set(rgb, sh, 15, c); set(rgb, sh + 1, 15, c);
-          if (shield && t % 4 < 2) { blend(rgb, sh - 1, 14, [80, 220, 255], 0.6); blend(rgb, sh + 1, 14, [80, 220, 255], 0.6); blend(rgb, sh, 13, [80, 220, 255], 0.6); }
+          set(rgb, sh, 14, WHITE); set(rgb, sh - 1, 15, YOU); set(rgb, sh, 15, YOU); set(rgb, sh + 1, 15, YOU);
+          if (shield) { set(rgb, sh - 1, 14, YOU); set(rgb, sh + 1, 14, YOU); set(rgb, sh, 13, YOU); }
         }
-        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 0, [255, 60, 90]);
+        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 0, WHITE);
       };
       return g;
     },
   },
   {
     name: 'Maze Raider', emoji: '👾', tickMs: 70,
-    help: '3D first person. ▲▼ walk, ◀▶ turn, A fires, Y shows the map (Xbox: left stick, A or RT to fire, LB/RB to sidestep, Y for the map). From level 2 a red door blocks the way: find the key. Grab the shotgun, watch out for green spitters, and reach the glowing green exit. Pink = health, yellow = ammo.',
+    help: '3D first person. ▲▼ walk, ◀▶ turn, A fires, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT fires, Y for the map. From level 2 a red door blocks the way: find the key. Grab the shotgun, watch out for green spitters, and reach the glowing green exit. Pink = health, yellow = ammo.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       const VIEW = 15, MID = VIEW / 2; // rows 0..14 are the 3D view, row 15 is the status bar
-      let map, size, px, py, ang, hp = 100, ammo = 24, level = 0, t = 0, muzzle = 0, hurtFlash = 0, cool = 0, recoil = 0;
-      let hasKey = false, doorLevel = false, shotgun = false, showMap = false, keyHint = 0;
-      let things = [], shots = [], torches = [], seen = new Set();
+      let map, size, px, py, ang, hp = 100, ammo = 24, level = 0, t = 0, muzzle = 0, cool = 0, recoil = 0;
+      let hasKey = false, doorLevel = false, shotgun = false, showMap = false, keyHint = 0, rightStick = false;
+      let things = [], shots = [], seen = new Set();
       const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
       function bfs(blockDoor) {
@@ -759,14 +710,6 @@ const GAME_LIST = [
             } else map[y][x] = 0;
           }
         }
-        // torches on the walls light up the gloom
-        torches = [];
-        for (const [x, y] of [...cells].sort(() => Math.random() - 0.5)) {
-          if (torches.length >= size * 0.8) break;
-          const w = N4.find(([dx, dy]) => map[y + dy][x + dx] && map[y + dy][x + dx] < 5);
-          if (!w || torches.some(tc => Math.hypot(tc.x - x - 0.5, tc.y - y - 0.5) < 3.2)) continue;
-          torches.push({ kind: 't', x: x + 0.5 + w[0] * 0.4, y: y + 0.5 + w[1] * 0.4, ph: Math.random() * 6 });
-        }
         px = 1.5; py = 1.5; ang = map[1][2] ? Math.PI / 2 : 0;
         things = []; shots = []; seen = new Set();
         const spots = cells.filter(([x, y]) => dist[y][x] > 4 && !(keyAt && x === keyAt[0] && y === keyAt[1])).sort(() => Math.random() - 0.5);
@@ -780,7 +723,7 @@ const GAME_LIST = [
         put('h'); put('h'); put('a'); put('a');
         if (!shotgun && level >= 2) put('w');
         if (keyAt) things.push({ kind: 'k', x: keyAt[0] + 0.5, y: keyAt[1] + 0.5 });
-        card(g, ['LV', String(level)], [255, 120, 60], 1100);
+        card(g, ['LV', String(level)], WHITE, 1100);
       }
       buildLevel();
       g.peek = () => ({ map, size, px, py, ang, things, hasKey, doorLevel, level, hp, shotgun }); // for tests
@@ -796,76 +739,50 @@ const GAME_LIST = [
         for (let i = 1; i < n; i++) if (wall(ax + (bx - ax) * i / n, ay + (by - ay) * i / n)) return false;
         return true;
       }
-      // light = the player's own lamp (fades with distance) + nearby torches, in a few steps to keep colours low
-      const FOG = [10, 6, 16];
-      function torchLight(wx, wy) {
-        let L = 0;
-        for (const tc of torches) { const d2 = (tc.x - wx) ** 2 + (tc.y - wy) ** 2; if (d2 < 7) L += (1 - d2 / 7) * (0.85 + 0.15 * Math.sin(t * 0.6 + tc.ph)); }
-        return Math.min(1, L);
-      }
-      function lit(c, d, wx, wy, side = 1) {
-        const tl = torchLight(wx, wy), warm = Math.round(tl * 2) / 2;
-        let k = Math.min(1.2, clamp(1.15 - d / 6, 0.1, 1) * 0.75 + tl * 0.7) * side;
-        k = Math.round(k * 6) / 6;
-        const f = Math.max(0, 1 - k);
-        return [c[0] * k + FOG[0] * f + warm * 40, c[1] * k + FOG[1] * f + warm * 14, c[2] * k + FOG[2] * f];
-      }
-      const WALLC = { 1: [160, 78, 50], 2: [70, 95, 160], 3: [120, 120, 125], 4: [90, 120, 80], 5: [170, 40, 40], 9: [40, 255, 90] };
-      function tex(type, u, v) {
-        switch (type) {
-          case 1: { const row = Math.floor(v * 4), off = (row & 1) * 0.5; return (v * 4) % 1 < 0.2 || ((u + off) * 2) % 1 < 0.12 ? [75, 50, 45] : [160, 78, 50]; }
-          case 2: if (u < 0.1 || u > 0.9 || v < 0.08) return [40, 55, 100]; return v > 0.42 && v < 0.56 ? [110, 190, 240] : [70, 95, 160];
-          case 3: { const row = Math.floor(v * 3); return (v * 3) % 1 < 0.14 || ((u * 2 + row * 0.37) % 1) < 0.1 ? [70, 70, 78] : [125, 125, 130]; }
-          case 4: { const row = Math.floor(v * 3); if ((v * 3) % 1 < 0.14 || ((u * 2 + row * 0.37) % 1) < 0.1) return [45, 70, 45]; return hash(u * 8 | 0, v * 8 | 0) < 0.3 ? [70, 150, 60] : [100, 115, 95]; }
-          case 5: if (Math.abs(u - 0.5) < 0.1 && Math.abs(v - 0.5) < 0.12) return [255, 220, 60]; return (u * 4) % 1 < 0.2 ? [100, 25, 25] : [175, 45, 40];
-          case 9: return ((v * 3 + t * 0.12) % 1) < 0.45 ? [80, 255, 130] : [20, 150, 60];
-        }
-        return [160, 78, 50];
+      // clean look: two wall tones (facing / side), flat floor and ceiling, three distance steps, flat sprites
+      const FACE = [124, 132, 148], SIDE = [84, 90, 104], FLOOR_C = [74, 63, 51], CEIL = [42, 44, 54];
+      const step = (c, d) => dim(c, d < 2.5 ? 1 : d < 5 ? 0.7 : 0.45);
+      function wallColor(type, u, v, side) {
+        if (type === 9) return GREEN;
+        if (type === 5) return Math.abs(u - 0.5) < 0.12 && Math.abs(v - 0.5) < 0.12 ? GOLD : RED;
+        return side ? SIDE : FACE;
       }
       const SPR = {
         grunt: { size: 0.8, w: 0.7, lift: 0 }, brute: { size: 0.95, w: 0.85, lift: 0 }, spitter: { size: 0.75, w: 0.75, lift: 0 },
         h: { size: 0.32, w: 1, lift: 0 }, a: { size: 0.28, w: 1.2, lift: 0 }, k: { size: 0.28, w: 1.2, lift: 0.25 }, w: { size: 0.22, w: 2.2, lift: 0.25 },
-        t: { size: 0.5, w: 0.4, lift: 0.3 }, p: { size: 0.24, w: 1, lift: 0.4 },
+        p: { size: 0.24, w: 1, lift: 0.4 },
       };
-      const MCOL = { grunt: [210, 40, 50], brute: [140, 60, 210], spitter: [70, 190, 80] };
+      const MCOL = { grunt: RED, brute: [150, 70, 220], spitter: GREEN };
       function paint(o, u, v) {
         switch (o.kind) {
           case 'm': {
             const base = MCOL[o.type];
-            if (o.dying) return u < 0.1 || u > 0.9 ? null : mix(base, [150, 0, 0], 0.6);
+            if (o.dying) return u < 0.1 || u > 0.9 ? null : RED;
             if (v > 0.82) { // two legs that take turns
-              const L = u > 0.18 && u < 0.4, R = u > 0.6 && u < 0.82;
-              if (!L && !R) return null;
-              if ((o.step | 0) % 2 ? L && v > 0.92 : R && v > 0.92) return null;
-              return dim(base, 0.6);
+              const L = u > 0.18 && u < 0.4, Rt = u > 0.6 && u < 0.82;
+              if (!L && !Rt) return null;
+              if ((o.step | 0) % 2 ? L && v > 0.92 : Rt && v > 0.92) return null;
+              return o.hit ? WHITE : base;
             }
             if (u < 0.1 || u > 0.9) return null;
-            if (v < 0.14 && (u < 0.26 || u > 0.74)) return o.type === 'brute' && (u < 0.2 || u > 0.8) ? [230, 220, 200] : null;
-            if (o.hit) return [255, 255, 255];
-            if (v > 0.22 && v < 0.38 && (Math.abs(u - 0.32) < 0.1 || Math.abs(u - 0.68) < 0.1)) return o.type === 'spitter' ? [255, 90, 40] : [255, 230, 60];
-            if (v > 0.5 && v < 0.64 && u > 0.3 && u < 0.7) return o.type === 'spitter' ? (o.charge ? [190, 255, 140] : [30, 70, 25]) : v < 0.55 && (u * 10 | 0) % 2 ? [240, 240, 240] : [70, 10, 15];
+            if (v < 0.14 && (u < 0.26 || u > 0.74)) return o.type === 'brute' && (u < 0.2 || u > 0.8) ? WHITE : null;
+            if (o.hit) return WHITE;
+            if (v > 0.22 && v < 0.38 && (Math.abs(u - 0.32) < 0.1 || Math.abs(u - 0.68) < 0.1)) return o.charge ? WHITE : GOLD;
             return base;
           }
-          case 'h': if (v < 0.15) return [200, 200, 210]; return (Math.abs(u - 0.5) < 0.14 && v > 0.25 && v < 0.88) || (Math.abs(v - 0.56) < 0.14 && u > 0.2 && u < 0.8) ? [230, 30, 40] : [235, 235, 240];
-          case 'a': return v < 0.2 ? [120, 90, 20] : (u * 4 | 0) % 2 ? [255, 210, 40] : [180, 140, 20];
+          case 'h': return (Math.abs(u - 0.5) < 0.14 && v > 0.2 && v < 0.85) || (Math.abs(v - 0.52) < 0.14 && u > 0.2 && u < 0.8) ? WHITE : GREEN;
+          case 'a': return GOLD;
           case 'k': {
-            const gold = t % 8 < 5 ? [255, 220, 60] : [255, 255, 170];
-            if (u < 0.38) return u > 0.12 && u < 0.26 && v > 0.3 && v < 0.7 ? null : gold;
-            if (v > 0.38 && v < 0.62) return gold;
-            return v >= 0.62 && u > 0.6 && (u * 10 | 0) % 2 ? gold : null;
+            if (u < 0.38) return u > 0.12 && u < 0.26 && v > 0.3 && v < 0.7 ? null : GOLD;
+            if (v > 0.38 && v < 0.62) return GOLD;
+            return v >= 0.62 && u > 0.6 && (u * 10 | 0) % 2 ? GOLD : null;
           }
-          case 'w': if (v > 0.3 && v < 0.6) return u < 0.35 ? [130, 75, 40] : [150, 150, 165]; return v >= 0.6 && u > 0.2 && u < 0.38 ? [100, 55, 30] : null;
-          case 't': {
-            if (v > 0.5) return Math.abs(u - 0.5) < 0.22 ? [110, 70, 35] : null;
-            if (Math.abs(u - 0.5) > 0.12 + 0.4 * v) return null;
-            if (v > 0.25 && Math.abs(u - 0.5) < 0.12) return [255, 250, 200];
-            return (t + (o.ph * 3 | 0)) % 4 < 2 ? [255, 210, 80] : [255, 130, 30];
-          }
-          case 'p': { const r = (u - 0.5) ** 2 + (v - 0.5) ** 2; return r > 0.25 ? null : r < 0.06 ? [230, 255, 200] : [120, 255, 90]; }
+          case 'w': if (v > 0.3 && v < 0.6) return u < 0.35 ? GREY : WHITE; return v >= 0.6 && u > 0.2 && u < 0.38 ? GREY : null;
+          case 'p': return (u - 0.5) ** 2 + (v - 0.5) ** 2 > 0.25 ? null : RED;
         }
         return null;
       }
-      function hurt(dmg) { hp -= dmg; hurtFlash = 4; shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
+      function hurt(dmg) { hp -= dmg; flash(g, RED, 2); shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
       function damage(m, n) {
         m.hp -= n; m.hit = 3; m.alert = true; fx(g, 'hit');
         if (m.hp <= 0) {
@@ -878,10 +795,14 @@ const GAME_LIST = [
         t++;
         const h = inp.held, me = { x: px, y: py };
         if (inp.pressed.has('y')) { showMap = !showMap; fx(g, 'click'); }
-        if (h.left) ang -= 0.12;
-        if (h.right) ang += 0.12;
+        // right stick looks around (further = faster). Once it's in use, the left stick sidesteps instead of turning.
+        const ax = inp.axes || {};
+        if (ax.rx) { ang += ax.rx * 0.16; rightStick = true; }
+        const stickSide = rightStick && Math.abs(ax.lx || 0) > 0.3;
+        if (!stickSide) { if (h.left) ang -= 0.12; if (h.right) ang += 0.12; }
         let dx = Math.cos(ang), dy = Math.sin(ang);
         const sp = 0.12;
+        if (stickSide) move(-dy * sp * 0.8 * ax.lx, dx * sp * 0.8 * ax.lx, me);
         if (h.up) move(dx * sp, dy * sp, me);
         if (h.down) move(-dx * sp * 0.7, -dy * sp * 0.7, me);
         if (h.sl) move(dy * sp * 0.8, -dx * sp * 0.8, me);
@@ -893,12 +814,12 @@ const GAME_LIST = [
         if (keyHint) keyHint--;
         const door = touching(5);
         if (door) {
-          if (hasKey) { map[Math.floor(door[1])][Math.floor(door[0])] = 0; hasKey = false; fx(g, 'power'); flash(g, [255, 220, 60], 3); g.score += 10; }
-          else if (!keyHint) { keyHint = 40; fx(g, 'click'); card(g, ['KEY'], [255, 220, 60], 900, false); }
+          if (hasKey) { map[Math.floor(door[1])][Math.floor(door[0])] = 0; hasKey = false; fx(g, 'power'); flash(g, GOLD); g.score += 10; }
+          else if (!keyHint) { keyHint = 40; fx(g, 'click'); card(g, ['KEY'], GOLD, 900, false); }
         }
         // reached the exit: bonus, then the next level
         if (touching(9)) {
-          g.score += 50 + level * 10 + Math.floor(hp / 2); fx(g, 'level'); flash(g, [40, 255, 90], 4);
+          g.score += 50 + level * 10 + Math.floor(hp / 2); fx(g, 'level'); flash(g, GREEN);
           buildLevel(); dx = Math.cos(ang); dy = Math.sin(ang);
         }
 
@@ -907,13 +828,11 @@ const GAME_LIST = [
         for (let col = 0; col < N; col++) { const cam = 2 * (col + 0.5) / N - 1; rays.push([dx - dy * plane * cam, dy + dx * plane * cam]); }
         for (let y = 0; y < VIEW; y++) {
           const off = y + 0.5 - MID;
-          if (Math.abs(off) < 0.6) { for (let x = 0; x < N; x++) set(rgb, x, y, FOG); continue; }
+          if (Math.abs(off) < 0.6) { for (let x = 0; x < N; x++) set(rgb, x, y, BLACK); continue; }
           const rd = MID / Math.abs(off), floor = off > 0;
           for (let col = 0; col < N; col++) {
             const wx = px + rd * rays[col][0], wy = py + rd * rays[col][1];
-            const tile = (Math.floor(wx * 2) + Math.floor(wy * 2)) & 1;
-            const base = floor ? (tile ? [80, 70, 58] : [62, 54, 45]) : (tile ? [46, 42, 64] : [36, 33, 52]);
-            set(rgb, col, y, lit(base, rd, wx, wy, floor ? 1 : 0.8));
+            set(rgb, col, y, floor ? step(FLOOR_C, rd) : CEIL);
           }
         }
         // --- walls: one ray per column, textured ---
@@ -934,9 +853,8 @@ const GAME_LIST = [
           const u = (side ? hx : hy) % 1;
           const hgt = VIEW / dist, top = (VIEW - hgt) / 2, bot = top + hgt;
           for (let y = Math.max(0, Math.floor(top)); y < Math.min(VIEW, Math.ceil(bot)); y++) {
-            const v = (y + 0.5 - top) / hgt, base = tex(hit, u, v);
-            const c = hit === 9 ? dim(base, clamp(1.2 - dist / 12, 0.5, 1)) : lit(base, dist, hx - rx * 0.05, hy - ry * 0.05, side ? 0.8 : 1);
-            blend(rgb, col, y, c, Math.min(y + 1, bot) - Math.max(y, top));
+            const v = (y + 0.5 - top) / hgt, base = wallColor(hit, u, v, side);
+            if (Math.min(y + 1, bot) - Math.max(y, top) >= 0.5) set(rgb, col, y, hit === 9 || hit === 5 ? base : step(base, dist));
           }
         }
 
@@ -982,8 +900,8 @@ const GAME_LIST = [
           it.taken = true; fx(g, 'pickup');
           if (it.kind === 'h') hp = Math.min(100, hp + 30);
           else if (it.kind === 'a') ammo += 12;
-          else if (it.kind === 'k') { hasKey = true; fx(g, 'power'); g.score += 10; card(g, ['KEY'], [255, 220, 60], 700, false); }
-          else if (it.kind === 'w') { shotgun = true; ammo += 8; fx(g, 'power'); card(g, ['GUN'], [255, 150, 40], 800, false); }
+          else if (it.kind === 'k') { hasKey = true; fx(g, 'power'); g.score += 10; card(g, ['KEY'], GOLD, 700, false); }
+          else if (it.kind === 'w') { shotgun = true; ammo += 8; fx(g, 'power'); card(g, ['GUN'], GOLD, 800, false); }
         }
 
         // --- shooting ---
@@ -1008,7 +926,7 @@ const GAME_LIST = [
         }
 
         // --- sprites, far to near ---
-        const list = [...things.filter(o => (o.kind === 'm' ? !o.dead : !o.taken)), ...shots, ...torches].map(o => {
+        const list = [...things.filter(o => (o.kind === 'm' ? !o.dead : !o.taken)), ...shots].map(o => {
           const rx = o.x - px, ry = o.y - py;
           return { o, tx: -dy * rx + dx * ry, ty: dx * rx + dy * ry };
         }).filter(s => s.ty > 0.15).sort((a, b) => b.ty - a.ty);
@@ -1019,8 +937,7 @@ const GAME_LIST = [
           const floorY = MID + scale / 2 - scale * lift;
           const hS = scale * spec.size * (o.dying ? o.dying / 8 : 1), wS = scale * spec.size * spec.w;
           const top = floorY - hS, left = sxc - wS / 2;
-          if (o.burst) { o.burst = false; if (sxc > -2 && sxc < N + 2) burst(g, sxc, floorY - hS / 2, [MCOL[o.type], [255, 40, 40], [120, 0, 0]], 14, { speed: 0.7, life: 9, grav: 0.06 }); }
-          const glow = o.kind === 't' || o.kind === 'p';
+          if (o.burst) { o.burst = false; if (sxc > -2 && sxc < N + 2) burst(g, sxc, floorY - hS / 2, MCOL[o.type], 8, { speed: 0.7, grav: 0.06 }); }
           for (let x = Math.floor(left); x < Math.ceil(left + wS); x++) {
             if (x < 0 || x >= N || zbuf[x] < s.ty) continue;
             for (let y = Math.floor(top); y < Math.ceil(floorY); y++) {
@@ -1028,46 +945,45 @@ const GAME_LIST = [
               const c = paint(o, (x + 0.5 - left) / wS, (y + 0.5 - top) / hS);
               if (!c) continue;
               const cover = Math.min(1, Math.min(x + 1, left + wS) - Math.max(x, left)) * Math.min(1, Math.min(y + 1, floorY) - Math.max(y, top));
-              blend(rgb, x, y, glow ? dim(c, clamp(1.3 - s.ty / 10, 0.5, 1)) : lit(c, s.ty, o.x, o.y), Math.max(0.35, cover));
+              if (cover >= 0.35) set(rgb, x, y, c);
             }
           }
         }
 
-        // --- gun, flashes, HUD ---
+        // --- gun, map, HUD ---
         const bob = (h.up || h.down) && t % 6 < 3 ? 1 : 0, kick = recoil ? 1 : 0;
         if (shotgun) {
-          set(rgb, 7, 12 + bob + kick, [150, 150, 165]); set(rgb, 8, 12 + bob + kick, [115, 115, 130]);
-          for (let x = 6; x <= 9; x++) { set(rgb, x, 13 + kick, x < 8 ? [130, 75, 40] : [100, 55, 30]); set(rgb, x, 14, x < 8 ? [100, 55, 30] : [80, 45, 25]); }
-          if (muzzle) { muzzle--; for (let x = 6; x <= 9; x++) set(rgb, x, 11, [255, 220, 100]); set(rgb, 7, 10, [255, 255, 200]); set(rgb, 8, 10, [255, 255, 200]); }
+          set(rgb, 7, 12 + bob + kick, WHITE); set(rgb, 8, 12 + bob + kick, WHITE);
+          for (let x = 6; x <= 9; x++) { set(rgb, x, 13 + kick, GREY); set(rgb, x, 14, GREY); }
+          if (muzzle) { muzzle--; for (let x = 6; x <= 9; x++) set(rgb, x, 11, GOLD); }
         } else {
-          set(rgb, 7, 13 + bob + kick, [150, 150, 160]); set(rgb, 8, 13 + bob + kick, [110, 110, 120]);
-          set(rgb, 7, 14, [90, 90, 100]); set(rgb, 8, 14, [70, 70, 80]);
-          if (muzzle) { muzzle--; set(rgb, 7, 12, [255, 240, 120]); set(rgb, 8, 12, [255, 200, 60]); set(rgb, 7, 11, [255, 255, 200]); }
+          set(rgb, 7, 13 + bob + kick, WHITE); set(rgb, 8, 13 + bob + kick, WHITE);
+          set(rgb, 7, 14, GREY); set(rgb, 8, 14, GREY);
+          if (muzzle) { muzzle--; set(rgb, 7, 12, GOLD); set(rgb, 8, 12, GOLD); }
         }
-        if (hurtFlash) { hurtFlash--; for (let i = 0; i < N * VIEW; i++) rgb[i * 3] = Math.min(255, rgb[i * 3] + 110); }
         if (showMap) {
           // the map shows only places you have seen
           const cx0 = Math.floor(px) - 7, cy0 = Math.floor(py) - 7;
           for (let y = 0; y < VIEW; y++) for (let x = 0; x < N; x++) {
             const wx = cx0 + x, wy = cy0 + y;
-            let c = [0, 0, 0];
-            if (wx >= 0 && wy >= 0 && wx < size && wy < size && seen.has(wy * size + wx)) { const v = map[wy][wx]; c = !v ? [22, 22, 32] : v === 9 ? (t % 6 < 3 ? [40, 255, 90] : [20, 140, 50]) : dim(WALLC[v], 0.65); }
+            let c = BLACK;
+            if (wx >= 0 && wy >= 0 && wx < size && wy < size && seen.has(wy * size + wx)) { const v = map[wy][wx]; c = !v ? DARK : v === 9 ? GREEN : v === 5 ? RED : GREY; }
             set(rgb, x, y, c);
           }
           for (const o of things) {
             if (o.taken || o.dead || !seen.has(Math.floor(o.y) * size + Math.floor(o.x))) continue;
-            const c = o.kind === 'm' ? (o.hp > 0 ? [255, 60, 60] : null) : o.kind === 'k' ? [255, 220, 60] : o.kind === 'h' ? [255, 90, 160] : o.kind === 'w' ? [255, 150, 40] : [200, 170, 40];
+            const c = o.kind === 'm' ? (o.hp > 0 ? RED : null) : o.kind === 'h' ? GREEN : GOLD;
             if (c) set(rgb, Math.floor(o.x) - cx0, Math.floor(o.y) - cy0, c);
           }
-          set(rgb, 7, 7, [255, 255, 255]); set(rgb, 7 + Math.round(dx), 7 + Math.round(dy), [255, 140, 140]);
+          set(rgb, 7, 7, YOU); set(rgb, 7 + Math.round(dx), 7 + Math.round(dy), WHITE);
         }
-        for (let x = 0; x < N; x++) set(rgb, x, 15, [12, 12, 16]);
+        for (let x = 0; x < N; x++) set(rgb, x, 15, BLACK);
         const hpBar = Math.ceil(hp / 100 * 6);
-        for (let x = 0; x < hpBar; x++) set(rgb, x, 15, hp > 35 ? [60, 220, 90] : t % 6 < 3 ? [255, 60, 60] : [150, 30, 30]);
-        if (doorLevel) { const kc = hasKey ? (t % 8 < 5 ? [255, 220, 60] : [255, 255, 170]) : [60, 50, 20]; set(rgb, 7, 15, kc); set(rgb, 8, 15, kc); }
+        if (hp > 35 || t % 6 < 3) for (let x = 0; x < hpBar; x++) set(rgb, x, 15, hp > 35 ? GREEN : RED);
+        if (doorLevel) { const kc = hasKey ? GOLD : DARK; set(rgb, 7, 15, kc); set(rgb, 8, 15, kc); }
         const ammoBar = Math.min(6, Math.ceil(ammo / 4));
-        for (let x = 0; x < ammoBar; x++) set(rgb, 15 - x, 15, shotgun ? [255, 150, 40] : [255, 210, 40]);
-        if (!ammo) set(rgb, 15, 15, t % 6 < 3 ? [255, 60, 60] : [60, 20, 20]);
+        for (let x = 0; x < ammoBar; x++) set(rgb, 15 - x, 15, GOLD);
+        if (!ammo && t % 6 < 3) set(rgb, 15, 15, RED);
       };
       return g;
     },
@@ -1104,7 +1020,7 @@ const GAME_LIST = [
         lanes.forEach((l, i) => l.objs.forEach((o, k) => { o.c = CAR_COLORS[(i + k) % CAR_COLORS.length]; o.phase = k * 37 + i * 11; }));
       }
       buildLanes();
-      card(g, ['LV', '1'], [140, 255, 90], 1000);
+      card(g, ['LV', '1'], WHITE, 1000);
       const respawn = () => { x = 7; y = 14; best = 14; timer = TIME; };
       respawn();
 
@@ -1118,8 +1034,8 @@ const GAME_LIST = [
 
       function die(kind) {
         lives--; dead = 14; fx(g, kind === 'water' ? 'boom' : 'hurt'); navigator.vibrate?.(120); shake(g, 3);
-        if (kind === 'water') burst(g, x, y, [[90, 150, 255], [255, 255, 255]], 12, { speed: 0.5, up: 0.3, grav: 0.05 });
-        else burst(g, x, y, [[255, 60, 60], [140, 255, 90], [255, 255, 255]], 10, { speed: 0.7 });
+        if (kind === 'water') burst(g, x, y, WHITE, 6, { speed: 0.5, up: 0.3, grav: 0.05 });
+        else burst(g, x, y, YOU, 6, { speed: 0.7 });
         if (!lives) g.over = true;
       }
 
@@ -1145,9 +1061,9 @@ const GAME_LIST = [
             if (slot < 0 || homes[slot]) die('hedge');
             else {
               homes[slot] = true; g.score += 50 + Math.floor(timer / 10); fx(g, 'coin');
-              burst(g, HOMES[slot] + 0.5, 0, [[140, 255, 90], [255, 255, 255]], 8, { speed: 0.5 });
-              if (fly && fly.slot === slot) { g.score += 100; fx(g, 'power'); burst(g, HOMES[slot] + 0.5, 1, [[255, 230, 80], [255, 255, 255]], 10); fly = null; }
-              if (homes.every(Boolean)) { level++; g.score += 100; homes = [false, false, false, false]; buildLanes(); fx(g, 'level'); flash(g, [140, 255, 90], 4); card(g, ['LV', String(level)], [140, 255, 90], 1000); }
+              burst(g, HOMES[slot] + 0.5, 1, YOU, 4, { speed: 0.5 });
+              if (fly && fly.slot === slot) { g.score += 100; fx(g, 'power'); burst(g, HOMES[slot] + 0.5, 1, GOLD, 6); fly = null; }
+              if (homes.every(Boolean)) { level++; g.score += 100; homes = [false, false, false, false]; buildLanes(); fx(g, 'level'); flash(g, GREEN); card(g, ['LV', String(level)], WHITE, 1000); }
               respawn();
             }
           } else if (lane && lane.kind === 'car') {
@@ -1160,41 +1076,39 @@ const GAME_LIST = [
           if (!dead && timer <= 0) die('time');
         }
 
-        // ---- draw ----
+        // ---- draw: blue water, brown logs, green turtles, red cars, you in cyan ----
+        const WATER = [30, 76, 154], LOG = [138, 90, 42];
         for (let row = 0; row < N; row++) for (let col = 0; col < N; col++) {
-          let c;
-          if (row === 0) c = HOMES.some(h => col === h || col === h + 1) ? [10, 30, 60] : hash(col, 0) < 0.4 ? [15, 85, 30] : [20, 110, 40];
-          else if (row <= 6) c = (col * 3 + row * 5 + (t >> 2)) % 23 === 0 ? [90, 150, 255] : (col * 7 + row * 3 + (t >> 3)) % 31 === 0 ? [50, 100, 210] : [20, 60, 160];
-          else if (row === 7 || row === 14) c = hash(col, row) < 0.15 ? [255, 200, 80] : [70, 40, 110];
-          else if (row <= 13) c = (row === 10 || row === 12) && col % 4 < 2 ? [55, 55, 55] : [25, 25, 30];
-          else c = [0, 0, 0];
+          let c = BLACK;
+          if (row === 0) c = HOMES.some(h => col === h || col === h + 1) ? BLACK : GREEN;
+          else if (row <= 6) c = WATER;
+          else if (row === 7 || row === 14) c = DARK;
           set(rgb, col, row, c);
         }
-        homes.forEach((f, i) => { if (f) { set(rgb, HOMES[i], 0, [120, 255, 80]); set(rgb, HOMES[i] + 1, 0, [120, 255, 80]); } });
-        if (fly && (fly.life > 30 || t % 4 < 2)) set(rgb, HOMES[fly.slot] + (t % 8 < 4 ? 0 : 1), 0, [255, 230, 80]);
+        homes.forEach((f, i) => { if (f) { set(rgb, HOMES[i], 0, YOU); set(rgb, HOMES[i] + 1, 0, YOU); } });
+        if (fly && (fly.life > 30 || t % 4 < 2)) set(rgb, HOMES[fly.slot] + (t % 8 < 4 ? 0 : 1), 0, GOLD);
         for (const l of lanes) for (const o of l.objs) for (let col = 0; col < N; col++) {
           if (!covers(o, col)) continue;
-          const d = Math.floor(offset(o, col)), front = l.dir > 0 ? d === o.len - 1 : d === 0;
-          if (l.kind === 'log') set(rgb, col, l.y, d === 0 || d === o.len - 1 ? [105, 65, 30] : hash(col + (o.x | 0), l.y) < 0.3 ? [120, 78, 36] : [150, 98, 46]);
-          else if (l.kind === 'turtle') { const ph = turtlePhase(o); if (!diving(o)) set(rgb, col, l.y, ph >= 62 && ph < 74 && t % 4 < 2 ? [30, 100, 70] : d % 2 ? [30, 140, 75] : [45, 180, 95]); }
-          else set(rgb, col, l.y, o.len === 1 ? o.c : front ? mix(o.c, [255, 255, 220], 0.45) : o.len === 3 ? dim(o.c, 0.75) : o.c);
+          if (l.kind === 'log') set(rgb, col, l.y, LOG);
+          else if (l.kind === 'turtle') { const ph = turtlePhase(o); if (!diving(o) && !(ph >= 62 && ph < 74 && t % 4 < 2)) set(rgb, col, l.y, GREEN); }
+          else set(rgb, col, l.y, RED);
         }
-        if (dead) { if (t % 4 < 2) set(rgb, Math.round(x), y, [255, 40, 40]); }
-        else set(rgb, Math.round(x), y, t % 10 < 8 ? [140, 255, 90] : [220, 255, 200]);
+        if (dead) { if (t % 4 < 2) set(rgb, Math.round(x), y, RED); }
+        else set(rgb, Math.round(x), y, YOU);
         const bar = Math.ceil(Math.max(0, timer) / TIME * 12);
-        for (let col = 0; col < 12; col++) set(rgb, col, 15, col < bar ? (bar > 3 ? [60, 200, 90] : [255, 80, 60]) : [15, 15, 20]);
-        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 15, [255, 60, 90]);
+        for (let col = 0; col < 12; col++) set(rgb, col, 15, col < bar ? (bar > 3 ? GREEN : RED) : BLACK);
+        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 15, WHITE);
       };
       return g;
     },
   },
   {
     name: 'Brick breaker', emoji: '🧱', tickMs: 70,
-    help: 'Hold left or right to move the paddle, A launches the ball. Silver bricks take two hits. Catch the falling capsules: blue = wide paddle, pink = extra balls, green = slow ball. Every level has a new layout.',
+    help: 'Hold left or right to move the paddle, A launches the ball. Silver bricks take two hits. Catch the gold capsules for a wide paddle, extra balls or a slower ball. Every level has a new layout.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       let px = 6, pw = 4, wide = 0, slow = 0, lives = 3, level = 1, balls = [], bricks = [], caps = [], serveT = 0, t = 0;
-      const COLORS = [[255, 60, 60], [255, 150, 40], [255, 230, 40], [60, 220, 90], [60, 160, 255]];
+      const COLORS = [RED, [255, 140, 50], GOLD, GREEN, [60, 140, 255]];
       const LAYOUTS = [
         () => true,
         (c, r) => Math.abs(c - 3.5) <= r + 0.5,
@@ -1202,7 +1116,6 @@ const GAME_LIST = [
         (c, r) => Math.abs(c - 3.5) + Math.abs(r - 2) <= 3.5,
         (c, r) => r !== 2 && c !== 3 && c !== 4,
       ];
-      const CAPS = { W: [80, 160, 255], M: [255, 120, 220], S: [80, 255, 120] };
       function build() {
         bricks = [];
         const lay = LAYOUTS[(level - 1) % LAYOUTS.length];
@@ -1210,7 +1123,7 @@ const GAME_LIST = [
       }
       const serve = () => { balls = [{ x: px + pw / 2 - 0.5, y: 14, vx: 0, vy: 0, stuck: true, trail: [] }]; serveT = 30; };
       build(); serve();
-      card(g, ['LV', '1'], [255, 200, 60], 1000);
+      card(g, ['LV', '1'], WHITE, 1000);
       const brickAt = (cx, cy) => bricks.find(b => b.hp > 0 && cy === b.y && (cx === b.x || cx === b.x + 1));
       g.tick = (inp, rgb) => {
         t++;
@@ -1236,27 +1149,26 @@ const GAME_LIST = [
             hit.hp--;
             if (!hit.hp) {
               g.score += 1 + Math.floor(level / 2); fx(g, 'brick');
-              burst(g, hit.x + 0.5, hit.y, [hit.c, dim(hit.c, 0.6), [255, 255, 255]], 7, { speed: 0.5, grav: 0.05 });
+              burst(g, hit.x + 0.5, hit.y, hit.c, 4, { speed: 0.5, grav: 0.05 });
               if (Math.random() < 0.14) { const k = 'WMS'[rand(3)]; caps.push({ x: hit.x + rand(2), y: hit.y, kind: k }); }
-            } else { fx(g, 'hit'); burst(g, hit.x + 0.5, hit.y, [220, 220, 235], 3, { speed: 0.3, life: 4 }); }
+            } else fx(g, 'hit');
           }
           if (ny >= 14 && b.vy > 0 && nx >= px - 0.6 && nx <= px + pw - 0.4) {
             b.vy = -Math.abs(b.vy); b.vx = clamp((nx - (px + pw / 2 - 0.5)) * 0.2 || 0.12, -0.7, 0.7); ny = 14; fx(g, 'bounce');
-            burst(g, nx, 15, [200, 200, 255], 3, { speed: 0.3, life: 4 });
-          }
+                      }
           b.x = nx; b.y = ny;
           if (ny > 15.5) b.dead = true;
         }
         balls = balls.filter(b => !b.dead);
         if (!balls.length) {
-          lives--; fx(g, 'hurt'); shake(g, 4); flash(g, [255, 60, 60], 3);
+          lives--; fx(g, 'hurt'); shake(g, 4); flash(g, RED);
           if (!lives) { g.over = true; return; }
           wide = 0; pw = 4; slow = 0; px = Math.min(px, N - pw); caps = []; serve();
         }
         for (const c of caps) {
           c.y += 0.2;
           if (Math.round(c.y) >= 15 && c.x >= px && c.x < px + pw) {
-            c.y = 99; fx(g, 'power'); burst(g, c.x, 15, CAPS[c.kind], 8, { speed: 0.5 });
+            c.y = 99; fx(g, 'power'); burst(g, c.x, 15, GOLD, 5, { speed: 0.5 });
             if (c.kind === 'W') { pw = 6; wide = 300; px = Math.min(px, N - pw); }
             else if (c.kind === 'S') slow = 250;
             else { const src = balls.find(b => !b.stuck) || balls[0]; for (const s of [-1, 1]) balls.push({ x: src.x, y: src.y, vx: clamp(src.vx + s * 0.25, -0.7, 0.7) || s * 0.2, vy: -Math.abs(src.vy || 0.45), stuck: false, trail: [] }); }
@@ -1266,23 +1178,211 @@ const GAME_LIST = [
         if (wide && !--wide) { pw = 4; px = Math.min(px, N - pw); }
         if (slow) slow--;
         if (bricks.every(b => b.hp <= 0)) {
-          level++; g.score += 20; fx(g, 'level'); flash(g, [255, 255, 255], 4);
-          build(); caps = []; serve(); card(g, ['LV', String(level)], [255, 200, 60], 1000);
+          level++; g.score += 20; fx(g, 'level'); flash(g, GREEN);
+          build(); caps = []; serve(); card(g, ['LV', String(level)], WHITE, 1000);
+        }
+        // draw: flat bricks (silver = tough), gold capsules, white ball, cyan paddle
+        rgb.fill(0);
+        for (const b of bricks) if (b.hp > 0) { const c = b.hp > 1 ? GREY : b.c; set(rgb, b.x, b.y, c); set(rgb, b.x + 1, b.y, c); }
+        for (const c of caps) if (t % 4 < 3) set(rgb, c.x, c.y, GOLD);
+        for (let i = 0; i < pw; i++) set(rgb, px + i, 15, YOU);
+        for (const b of balls) set(rgb, b.x, b.y, WHITE);
+        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 0, WHITE);
+      };
+      return g;
+    },
+  },
+  {
+    name: 'Ninja Dash', emoji: '🥷', tickMs: 60, players: 2,
+    help: '2 players. Face off on a rooftop: A dashes with your sword, B (or ▲) jumps over an incoming dash, ◀ ▶ step. Dash too early and you can be countered. Your sword shows when the dash is ready. First to 5 wins. Player 1 is cyan, player 2 is pink.',
+    create() {
+      const g = { score: 0, over: false, tickMs: 60 };
+      const GROUND = 12, WIN = 5;
+      let round = 0, pause = 0, t = 0, winner = -1, bg = NAVY;
+      const P = [{ c: YOU, pts: 0 }, { c: P2, pts: 0 }];
+      function reset() {
+        round++; pause = 0; winner = -1; bg = round % 2 ? NAVY : BLACK;
+        Object.assign(P[0], { x: 2, y: 0, vy: 0, dash: 0, cool: 10, from: null });
+        Object.assign(P[1], { x: 13, y: 0, vy: 0, dash: 0, cool: 10, from: null });
+        card(g, ['GO!'], WHITE, 700);
+      }
+      reset();
+      const dashSpeed = () => 1.1 + Math.min(0.5, round * 0.05);
+      g.tick = (inp, rgb) => {
+        t++;
+        const ins = [inp, inp.p2 || { held: {}, pressed: new Set() }];
+        if (pause > 0) {
+          if (--pause === 0) {
+            if (P[winner].pts >= WIN) { g.won = true; g.endText = [winner ? 'P2' : 'P1', 'WINS']; g.endColor = P[winner].c; g.noScore = true; g.score = P[winner].pts; g.over = true; return; }
+            reset();
+          }
+        } else {
+          const sideBefore = Math.sign(P[1].x - P[0].x);
+          for (let i = 0; i < 2; i++) {
+            const me = P[i], o = P[1 - i], h = ins[i].held, pr = ins[i].pressed;
+            me.face = o.x > me.x ? 1 : -1;
+            if (me.cool) me.cool--;
+            const ground = me.y === 0;
+            if (me.dash > 0) {
+              me.x = clamp(me.x + me.face * dashSpeed(), 0, N - 1); me.dash--;
+            } else {
+              if (h.left) me.x = clamp(me.x - 0.25, 0, N - 1);
+              if (h.right) me.x = clamp(me.x + 0.25, 0, N - 1);
+              if (pr.has('a') && !me.cool && ground) { me.dash = 5; me.cool = 18; me.from = me.x; fx(g, 'shoot'); }
+              else if ((pr.has('b') || pr.has('up')) && ground) { me.vy = -0.9; fx(g, 'jump'); }
+            }
+            if (!ground || me.vy) { me.vy += 0.15; me.y = Math.min(0, me.y + me.vy); if (me.y === 0) me.vy = 0; }
+          }
+          // clash: both dashing into each other bounces them apart
+          if (P[0].dash && P[1].dash && (Math.abs(P[0].x - P[1].x) < 1.5 || Math.sign(P[1].x - P[0].x) !== sideBefore)) {
+            P[0].dash = P[1].dash = 0; P[0].from = P[1].from = null; P[0].x = clamp(P[0].x - P[0].face * 3, 0, N - 1); P[1].x = clamp(P[1].x - P[1].face * 3, 0, N - 1);
+            fx(g, 'hit'); shake(g, 2); burst(g, (P[0].x + P[1].x) / 2, GROUND - 2, WHITE, 6);
+          }
+          // a dash hits if it reaches or passes the other ninja while they are low enough
+          const hits = P.map((me, i) => {
+            const o = P[1 - i];
+            if (me.from === null) return false;
+            const lo = Math.min(me.from, me.x) - 0.5, hi = Math.max(me.from, me.x) + 0.5;
+            return o.x >= lo && o.x <= hi && o.y > -1.4 && !o.dash;
+          });
+          P.forEach(me => { if (!me.dash) me.from = null; });
+          if (hits[0] && hits[1]) { fx(g, 'hit'); shake(g, 2); burst(g, (P[0].x + P[1].x) / 2, GROUND - 2, WHITE, 6); P.forEach(me => { me.dash = 0; me.from = null; }); }
+          else if (hits[0] || hits[1]) {
+            const i = hits[0] ? 0 : 1, me = P[i], o = P[1 - i];
+            winner = i; me.pts++; pause = 22; me.dash = 0; me.from = null; fx(g, 'boom'); shake(g, 3); flash(g, me.c);
+            burst(g, o.x, GROUND - 2, RED, 8, { speed: 0.7, grav: 0.05 });
+            card(g, [i ? 'P2' : 'P1'], me.c, 1100, false);
+          }
         }
         // draw
-        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) set(rgb, x, y, [3, 3, 8 + (y >> 2) * 2]);
-        for (const b of bricks) if (b.hp > 0) {
-          const c = b.hp > 1 ? [205, 205, 220] : b.c;
-          set(rgb, b.x, b.y, c); set(rgb, b.x + 1, b.y, dim(c, 0.6));
+        fill(rgb, bg);
+        for (let y = GROUND; y < N; y++) for (let x = 0; x < N; x++) set(rgb, x, y, GREY);
+        for (let k = 0; k < P[0].pts; k++) set(rgb, k * 2, 0, YOU);
+        for (let k = 0; k < P[1].pts; k++) set(rgb, 15 - k * 2, 0, P2);
+        P.forEach((me, i) => {
+          const x = Math.round(me.x), y = GROUND - 2 + Math.round(me.y), hitMe = winner >= 0 && winner !== i;
+          const c = hitMe && t % 4 < 2 ? RED : me.c;
+          if (me.dash) for (let sx = Math.round(Math.min(me.from ?? me.x, me.x)); sx <= Math.round(Math.max(me.from ?? me.x, me.x)); sx++) if (sx !== x) set(rgb, sx, y, WHITE);
+          set(rgb, x, y, c); set(rgb, x, y + 1, c);
+          if (!me.cool || me.dash) set(rgb, x + (me.face || 1), y + 1, WHITE);
+        });
+      };
+      return g;
+    },
+  },
+  {
+    name: 'Co-op Horde', emoji: '🧟', tickMs: 70, players: 2,
+    help: '2 players, same team. Monsters pour in through the four gates. Move with the stick or arrows, hold A to fire the way you last moved. Green hearts heal. If your partner falls, stand next to them for 2 seconds to revive them. A boss comes every 5 waves.',
+    create() {
+      const g = { score: 0, over: false, tickMs: 70 };
+      const GATES = [[7.5, 0.5], [7.5, 13.5], [0.5, 7], [14.5, 7]];
+      let wave = 0, toSpawn = 0, spawnT = 0, t = 0, kills = 0, boss = null;
+      let foes = [], shots = [], bombs = [], hearts = [];
+      const P = [
+        { c: YOU, x: 6.5, y: 8, ax: -1, ay: 0, hp: 100, cool: 0, down: false, rev: 0 },
+        { c: P2, x: 8.5, y: 8, ax: 1, ay: 0, hp: 100, cool: 0, down: false, rev: 0 },
+      ];
+      const wall = (x, y) => {
+        const cx = Math.round(x), cy = Math.round(y);
+        return cy <= 0 || cy >= 14 || cx <= 0 || cx >= 15;
+      };
+      function nextWave() {
+        wave++; fx(g, wave > 1 ? 'level' : 'start');
+        if (wave % 5 === 0) { const hp = 20 + wave * 3; boss = { x: 7.5, y: 2, hp, max: hp, cool: 40, hit: 0 }; toSpawn = 2; card(g, ['BOSS'], RED, 1200); }
+        else { toSpawn = 4 + wave * 2; card(g, ['WAVE', String(wave)], WHITE, 1000); }
+        g.score += wave > 1 ? 50 : 0;
+      }
+      nextWave();
+      const alive = () => P.filter(p => !p.down);
+      const nearest = (x, y) => alive().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
+      g.tick = (inp, rgb) => {
+        t++;
+        const ins = [inp, inp.p2 || { held: {}, pressed: new Set() }];
+        // players
+        P.forEach((p, i) => {
+          if (p.down) return;
+          const h = ins[i].held;
+          let mx = (h.right ? 1 : 0) - (h.left ? 1 : 0), my = (h.down ? 1 : 0) - (h.up ? 1 : 0);
+          if (mx || my) { p.ax = mx; p.ay = my; const k = mx && my ? 0.7 : 1; p.x = clamp(p.x + mx * 0.25 * k, 1, 14); p.y = clamp(p.y + my * 0.25 * k, 1, 13); }
+          if (p.cool) p.cool--;
+          if ((h.a || ins[i].pressed.has('a')) && !p.cool) { p.cool = 4; const k = p.ax && p.ay ? 0.7 : 1; shots.push({ x: p.x, y: p.y, vx: p.ax * 0.6 * k, vy: p.ay * 0.6 * k }); fx(g, 'shoot'); }
+        });
+        // reviving: stand next to a fallen partner
+        P.forEach((p, i) => {
+          if (!p.down) return;
+          const o = P[1 - i];
+          if (!o.down && Math.hypot(o.x - p.x, o.y - p.y) < 1.6) { if (++p.rev >= 30) { p.down = false; p.hp = 40; p.rev = 0; fx(g, 'power'); burst(g, p.x, p.y, GREEN, 6); } }
+          else p.rev = 0;
+        });
+        // spawning
+        if (toSpawn > 0 && --spawnT <= 0) {
+          spawnT = Math.max(8, 22 - wave);
+          const [gx, gy] = GATES[rand(4)];
+          foes.push({ x: gx, y: gy, hp: wave >= 3 && Math.random() < 0.3 ? 2 : 1, cool: 0, hit: 0 });
+          toSpawn--;
         }
-        for (const c of caps) set(rgb, c.x, c.y, t % 4 < 2 ? CAPS[c.kind] : [255, 255, 255]);
-        const pc = wide ? [120, 230, 255] : [200, 200, 255];
-        for (let i = 0; i < pw; i++) set(rgb, px + i, 15, i === 0 || i === pw - 1 ? dim(pc, 0.65) : pc);
-        for (const b of balls) {
-          b.trail.forEach(([x, y], i) => blend(rgb, x, y, slow ? [80, 255, 120] : [255, 255, 255], 0.35 - i * 0.1));
-          set(rgb, b.x, b.y, slow ? [180, 255, 200] : [255, 255, 255]);
+        if (!toSpawn && !foes.length && !boss) nextWave();
+        if (t % 260 === 0 && hearts.length < 2) hearts.push({ x: 2 + rand(12), y: 2 + rand(11) });
+        // monsters walk toward the nearest player
+        const sp = 0.06 + Math.min(0.06, wave * 0.005);
+        for (const f of foes) {
+          const p = nearest(f.x, f.y); if (!p) break;
+          const d = Math.hypot(p.x - f.x, p.y - f.y) || 1;
+          if (d > 0.8) { f.x = clamp(f.x + (p.x - f.x) / d * sp, 0.5, 14.5); f.y = clamp(f.y + (p.y - f.y) / d * sp, 0.5, 13.5); }
+          if (f.cool) f.cool--; if (f.hit) f.hit--;
+          if (d < 0.9 && !f.cool) { f.cool = 15; p.hp -= 10; fx(g, 'hurt'); shake(g, 1); navigator.vibrate?.(40); }
         }
-        for (let i = 0; i < lives; i++) set(rgb, 15 - i, 0, [255, 60, 120]);
+        if (boss) {
+          const p = nearest(boss.x, boss.y);
+          if (p) {
+            const d = Math.hypot(p.x - boss.x, p.y - boss.y) || 1;
+            if (d > 2) { boss.x = clamp(boss.x + (p.x - boss.x) / d * 0.04, 2, 13); boss.y = clamp(boss.y + (p.y - boss.y) / d * 0.04, 2, 12); }
+            if (--boss.cool <= 0) { boss.cool = Math.max(18, 40 - wave); bombs.push({ x: boss.x, y: boss.y, vx: (p.x - boss.x) / d * 0.3, vy: (p.y - boss.y) / d * 0.3 }); fx(g, 'shoot'); }
+            if (d < 2 && t % 15 === 0) { p.hp -= 15; fx(g, 'hurt'); shake(g, 2); }
+          }
+          if (boss.hit) boss.hit--;
+        }
+        // shots
+        for (const s of shots) {
+          s.x += s.vx; s.y += s.vy;
+          if (wall(s.x, s.y)) { s.dead = true; continue; }
+          for (const f of foes) if (!s.dead && f.hp > 0 && Math.abs(f.x - s.x) < 0.7 && Math.abs(f.y - s.y) < 0.7) {
+            s.dead = true; f.hp--; f.hit = 2; fx(g, 'hit');
+            if (f.hp <= 0) { kills++; g.score += 10; fx(g, 'boom'); burst(g, f.x, f.y, RED, 5); }
+          }
+          if (!s.dead && boss && Math.abs(boss.x - s.x) < 1.6 && Math.abs(boss.y - s.y) < 1.6) {
+            s.dead = true; boss.hp--; boss.hit = 2; fx(g, 'hit');
+            if (boss.hp <= 0) { g.score += 200; fx(g, 'boom'); shake(g, 5); flash(g, WHITE); burst(g, boss.x, boss.y, RED, 12, { speed: 0.9 }); boss = null; }
+          }
+        }
+        for (const b of bombs) {
+          b.x += b.vx; b.y += b.vy;
+          if (wall(b.x, b.y)) b.dead = true;
+          for (const p of alive()) if (!b.dead && Math.hypot(p.x - b.x, p.y - b.y) < 0.7) { b.dead = true; p.hp -= 12; fx(g, 'hurt'); shake(g, 2); }
+        }
+        for (const hrt of hearts) for (const p of alive()) if (!hrt.got && Math.hypot(p.x - hrt.x, p.y - hrt.y) < 0.8) { hrt.got = true; p.hp = Math.min(100, p.hp + 30); fx(g, 'pickup'); burst(g, hrt.x, hrt.y, GREEN, 5); }
+        P.forEach(p => { if (!p.down && p.hp <= 0) { p.down = true; p.hp = 0; fx(g, 'die'); flash(g, RED); } });
+        foes = foes.filter(f => f.hp > 0); shots = shots.filter(s => !s.dead); bombs = bombs.filter(b => !b.dead); hearts = hearts.filter(h => !h.got);
+        if (P.every(p => p.down)) { g.endText = ['WAVE', String(wave)]; g.endColor = WHITE; g.over = true; return; }
+
+        // draw: grey walls with four gates, red monsters, gold shots, green hearts
+        rgb.fill(0);
+        for (let x = 0; x < N; x++) if (x !== 7 && x !== 8) { set(rgb, x, 0, GREY); set(rgb, x, 14, GREY); }
+        for (let y = 0; y < 15; y++) if (y !== 7) { set(rgb, 0, y, GREY); set(rgb, 15, y, GREY); }
+        for (const h of hearts) set(rgb, h.x, h.y, GREEN);
+        for (const f of foes) set(rgb, f.x, f.y, f.hit ? WHITE : RED);
+        if (boss) {
+          const bx = Math.round(boss.x), by = Math.round(boss.y), c = boss.hit ? WHITE : RED;
+          for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) set(rgb, bx + a, by + b, c);
+          set(rgb, bx - 1, by - 1, WHITE); set(rgb, bx + 1, by - 1, WHITE);
+          const bar = Math.ceil(boss.hp / boss.max * 16);
+          for (let x = 0; x < bar; x++) set(rgb, x, 0, WHITE);
+        }
+        for (const s of shots) set(rgb, s.x, s.y, GOLD);
+        for (const b of bombs) set(rgb, b.x, b.y, RED);
+        P.forEach(p => { if (!p.down || t % 6 < 3) set(rgb, p.x, p.y, p.down ? DARK : p.c); });
+        const bar = (p, x0, dir) => { const n = Math.ceil(p.hp / 100 * 6); for (let k = 0; k < 6; k++) set(rgb, x0 + k * dir, 15, k < n ? p.c : BLACK); };
+        bar(P[0], 0, 1); bar(P[1], 15, -1);
       };
       return g;
     },
@@ -1294,8 +1394,9 @@ export const GAMES = GAME_LIST.map(polish);
 // Score screen shown after a game ends: GAME OVER (or YOU WIN!) then the score.
 export function gameOverFrame(rgb, game, t) {
   rgb.fill(0);
-  const c = game.won ? [80, 255, 120] : [255, 70, 90];
-  for (let x = 0; x < N; x++) { set(rgb, x, 0, (x + t) % 4 < 2 ? c : dim(c, 0.3)); set(rgb, x, 15, (x - t + 64) % 4 < 2 ? c : dim(c, 0.3)); }
-  if (t % 24 < 10) { drawText(rgb, game.won ? 'YOU' : 'GAME', 3, c); drawText(rgb, game.won ? 'WIN!' : 'OVER', 9, c); }
-  else drawNumber(rgb, game.score, 5, t % 6 < 4 ? [255, 255, 255] : [150, 150, 150]);
+  const c = game.endColor || (game.won ? GREEN : RED);
+  for (let x = 0; x < N; x++) { set(rgb, x, 0, (x + t) % 4 < 2 ? c : BLACK); set(rgb, x, 15, (x - t + 64) % 4 < 2 ? c : BLACK); }
+  const words = game.endText || (game.won ? ['YOU', 'WIN!'] : ['GAME', 'OVER']);
+  if (t % 24 < 10 || game.noScore) { drawText(rgb, words[0], 3, c); drawText(rgb, words[1], 9, c); }
+  else drawNumber(rgb, game.score, 5, t % 6 < 4 ? WHITE : GREY);
 }

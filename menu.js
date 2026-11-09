@@ -64,6 +64,21 @@ const ICONS = {
     const c2 = 2 + (t / 3 | 0) % 12; set(rgb, c2, 9, [255, 210, 40]);
     const hopY = [11, 10, 9, 8, 7, 6, 5][(t / 6 | 0) % 7]; set(rgb, 7, hopY, [140, 255, 90]);
   },
+  'Ninja Dash'(rgb, t) {
+    for (let x = 2; x <= 13; x++) for (let y = 10; y <= 12; y++) set(rgb, x, y, [110, 115, 128]);
+    const k = t % 24, ax = k < 12 ? 4 : Math.min(9, 4 + (k - 12));
+    if (k >= 12 && k < 18) for (let x = 4; x < ax; x++) set(rgb, x, 8, [255, 255, 255]);
+    set(rgb, ax, 8, [60, 200, 255]); set(rgb, ax, 9, [60, 200, 255]); set(rgb, ax + 1, 9, [255, 255, 255]);
+    const jump = k >= 12 && k < 20 ? 2 : 0;
+    set(rgb, 11, 8 - jump, [255, 92, 200]); set(rgb, 11, 9 - jump, [255, 92, 200]); set(rgb, 10, 9 - jump, [255, 255, 255]);
+  },
+  'Co-op Horde'(rgb, t) {
+    for (let x = 2; x <= 13; x++) if (x !== 7 && x !== 8) { set(rgb, x, 1, [110, 115, 128]); set(rgb, x, 12, [110, 115, 128]); }
+    for (let y = 1; y <= 12; y++) if (y !== 6) { set(rgb, 2, y, [110, 115, 128]); set(rgb, 13, y, [110, 115, 128]); }
+    set(rgb, 7, 6, [60, 200, 255]); set(rgb, 8, 6, [255, 92, 200]);
+    const s = t % 6; set(rgb, 6 - s, 6, [255, 210, 60]); set(rgb, 9 + s, 6, [255, 210, 60]);
+    [[3, 3], [11, 4], [5, 10], [10, 10], [7, 2]].forEach(([x, y], i) => { if ((t + i * 5) % 30 < 24) set(rgb, x, y, [255, 64, 64]); });
+  },
   'Brick breaker'(rgb, t) {
     const C = [[255, 60, 60], [255, 150, 40], [255, 230, 40], [60, 220, 90]];
     for (let r = 0; r < 4; r++) for (let x = 2; x <= 13; x++) if ((x + r + (t / 10 | 0)) % 7) set(rgb, x, 2 + r, x % 2 ? dim(C[r], 0.6) : C[r]);

@@ -1,8 +1,8 @@
-import * as D from './divoom.js?v=10';
-import { EFFECTS, renderFrames } from './effects.js?v=10';
-import { GAMES, gameOverFrame } from './games.js?v=10';
-import * as sfx from './sfx.js?v=10';
-import { drawLibrary, drawPause } from './menu.js?v=10';
+import * as D from './divoom.js?v=11';
+import { EFFECTS, renderFrames } from './effects.js?v=11';
+import { GAMES, gameOverFrame } from './games.js?v=11';
+import * as sfx from './sfx.js?v=11';
+import { drawLibrary, drawPause } from './menu.js?v=11';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -535,7 +535,25 @@ $('txtLive').onclick = () => {
 // 'play', 'pause' (Resume / Restart / Library) and 'over' (A again, B library).
 let selIdx = 0, game = null, gameT = 0, mode = null, pauseSel = 0, frozen = null;
 const gameSel = () => GAMES[selIdx];
-const input = { held: {}, pressed: new Set() };
+const input = { held: {}, pressed: new Set(), axes: {} };
+// Each controller (and the phone pad + keyboard as 'local', WASD as 'keys2') also keeps its own input,
+// so 2-player games can tell player 1 from player 2.
+const sources = {};
+const src = name => (sources[name] ||= { held: {}, pressed: new Set(), axes: {} });
+let padsNow = [];
+function clearPressed() { input.pressed.clear(); for (const k in sources) sources[k].pressed.clear(); }
+const merge = (...list) => {
+  const out = { held: {}, pressed: new Set(), axes: {} };
+  for (const s of list) { for (const k in s.held) out.held[k] ||= s.held[k]; s.pressed.forEach(k => out.pressed.add(k)); for (const k in s.axes) if (Math.abs(s.axes[k]) > Math.abs(out.axes[k] || 0)) out.axes[k] = s.axes[k]; }
+  return out;
+};
+// who is player 1 and player 2: two controllers = one each; one controller = it plus the phone pad; none = phone pad plus WASD
+function players() {
+  const pads = padsNow.map(i => 'pad' + i);
+  if (pads.length >= 2) return [merge(src(pads[0]), src('local')), src(pads[1])];
+  if (pads.length === 1) return [src(pads[0]), merge(src('local'), src('keys2'))];
+  return [src('local'), src('keys2')];
+}
 const best = name => { try { return +localStorage.getItem('tivoo-best-' + name) || 0; } catch { return 0; } };
 GAMES.forEach((gm, i) => {
   const b = document.createElement('button');
@@ -565,8 +583,9 @@ function setMode(m) {
 }
 function beginGame() {
   game = gameSel().create(); gameT = 0;
-  input.pressed.clear();
+  clearPressed();
   sfx.play('start');
+  if (gameSel().players === 2 && padsNow.length < 1) ui.status('This is a 2-player game: connect a controller for player 1, the phone pad is player 2.');
   setMode('play');
   ui.status(`Playing ${gameSel().name}. B or Start pauses.${tivoo.connected ? '' : ' Connect to play it on the Tivoo.'}`);
   ensureLoop();
@@ -599,7 +618,8 @@ function ensureLoop() {
       if (p.has('b') || p.has('start')) { frozen = rgb.slice(); pauseSel = 0; setMode('pause'); sfx.play('click'); }
       else if (p.has('menu')) { sfx.play('click'); p.clear(); return openLibrary(); }
       else {
-        game.tick(input, rgb);
+        if (gameSel().players === 2) { const [a, b] = players(); game.tick({ ...a, p2: b }, rgb); }
+        else game.tick(input, rgb);
         if (game.sfx?.length) { game.sfx.forEach(n => sfx.play(n)); game.sfx.length = 0; }
         $('gameScore').textContent = game.score; $('bpScore').textContent = game.score;
         if (game.over) {
@@ -626,7 +646,7 @@ function ensureLoop() {
       gameOverFrame(rgb, game, gameT);
       delay = 200;
     }
-    p.clear();
+    clearPressed();
     gameT++;
     drawLeds(rgb);
     if (!$('bigPad').hidden) $('bpScreen').getContext('2d').drawImage($('preview'), 0, 0, 160, 160);
@@ -637,8 +657,8 @@ function ensureLoop() {
 }
 $('gameStart').onclick = () => (mode ? stopArcade() : beginGame());
 
-function press(key) { input.pressed.add(key); input.held[key] = true; }
-function release(key) { input.held[key] = false; }
+function press(key, from = 'local') { input.pressed.add(key); input.held[key] = true; const s = src(from); s.pressed.add(key); s.held[key] = true; }
+function release(key, from = 'local') { input.held[key] = false; src(from).held[key] = false; }
 document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   const k = b.dataset.key;
   b.addEventListener('pointerdown', e => {
@@ -652,8 +672,16 @@ document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
 const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu', y: 'y', Tab: 'y' };
-document.addEventListener('keydown', e => { const k = KEYMAP[e.key]; if (!k || !mode || e.target.matches('input, select, textarea')) return; e.preventDefault(); if (!e.repeat) press(k); });
-document.addEventListener('keyup', e => { const k = KEYMAP[e.key]; if (k) release(k); });
+// player 2 on a keyboard: WASD to move, F = A, G = B
+const KEYMAP2 = { w: 'up', a: 'left', s: 'down', d: 'right', f: 'a', g: 'b' };
+document.addEventListener('keydown', e => {
+  if (!mode || e.target.matches('input, select, textarea')) return;
+  const two = gameSel().players === 2 && mode === 'play', k2 = two && KEYMAP2[e.key.toLowerCase()], k = !k2 && KEYMAP[e.key];
+  if (!k && !k2) return;
+  e.preventDefault(); if (e.repeat) return;
+  if (k2) { const s = src('keys2'); s.pressed.add(k2); s.held[k2] = true; } else press(k);
+});
+document.addEventListener('keyup', e => { const k2 = KEYMAP2[e.key.toLowerCase()]; if (k2) src('keys2').held[k2] = false; const k = KEYMAP[e.key]; if (k) release(k); });
 // swipe / tap on the preview screen
 let swipe = null;
 $('preview').addEventListener('pointerdown', e => { if (mode) swipe = { x: e.clientX, y: e.clientY, k: null }; });
@@ -703,24 +731,30 @@ function releaseWakeLock() { try { wakeLock?.release(); } catch {} wakeLock = nu
 const padPrev = {};
 function pollGamepads() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  padsNow = pads.map(gp => gp.index);
   if (!pads.length) return;
-  const now = { up: false, down: false, left: false, right: false, a: false, b: false, sl: false, sr: false, start: false, menu: false, y: false };
+  const dz = v => Math.abs(v) < 0.2 ? 0 : v;
+  input.axes = {};
   for (const gp of pads) {
+    const name = 'pad' + gp.index, prev = (padPrev[name] ||= {});
     const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
-    now.up ||= b(12) || ay < -0.5; now.down ||= b(13) || ay > 0.5;
-    now.left ||= b(14) || ax < -0.5; now.right ||= b(15) || ax > 0.5;
-    now.a ||= b(0) || b(2) || b(7); now.b ||= b(1); now.y ||= b(3);
-    now.start ||= b(9); now.menu ||= b(8) || b(16);
-    now.sl ||= b(4); now.sr ||= b(5);
-  }
-  for (const k of Object.keys(now)) {
-    if (now[k] && !padPrev[k]) {
-      if (!mode) { document.querySelector('[data-tab=games]').click(); openLibrary(); }
-      else if (k === 'menu' && mode !== 'play') openLibrary();
-      else press(k);
+    const now = {
+      up: b(12) || ay < -0.5, down: b(13) || ay > 0.5, left: b(14) || ax < -0.5, right: b(15) || ax > 0.5,
+      a: b(0) || b(2) || b(7), b: b(1), y: b(3), start: b(9), menu: b(8) || b(16), sl: b(4), sr: b(5),
+    };
+    // analog sticks: left x/y and right x/y (the right stick turns you in Maze Raider)
+    const axes = { lx: dz(ax), ly: dz(ay), rx: dz(gp.axes[2] || 0), ry: dz(gp.axes[3] || 0) };
+    src(name).axes = axes;
+    for (const k in axes) if (Math.abs(axes[k]) > Math.abs(input.axes[k] || 0)) input.axes[k] = axes[k];
+    for (const k of Object.keys(now)) {
+      if (now[k] && !prev[k]) {
+        if (!mode) { document.querySelector('[data-tab=games]').click(); openLibrary(); }
+        else if (k === 'menu' && mode !== 'play') openLibrary();
+        else press(k, name);
+      }
+      if (!now[k] && prev[k]) release(k, name);
+      prev[k] = now[k];
     }
-    if (!now[k] && padPrev[k]) release(k);
-    padPrev[k] = now[k];
   }
 }
 let padLoop = null;
