@@ -1,8 +1,8 @@
-import * as D from './divoom.js?v=9';
-import { EFFECTS, renderFrames } from './effects.js?v=9';
-import { GAMES, gameOverFrame } from './games.js?v=9';
-import * as sfx from './sfx.js?v=9';
-import { drawLibrary, drawPause } from './menu.js?v=9';
+import * as D from './divoom.js?v=10';
+import { EFFECTS, renderFrames } from './effects.js?v=10';
+import { GAMES, gameOverFrame } from './games.js?v=10';
+import * as sfx from './sfx.js?v=10';
+import { drawLibrary, drawPause } from './menu.js?v=10';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -651,7 +651,7 @@ document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
-const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu' };
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu', y: 'y', Tab: 'y' };
 document.addEventListener('keydown', e => { const k = KEYMAP[e.key]; if (!k || !mode || e.target.matches('input, select, textarea')) return; e.preventDefault(); if (!e.repeat) press(k); });
 document.addEventListener('keyup', e => { const k = KEYMAP[e.key]; if (k) release(k); });
 // swipe / tap on the preview screen
@@ -704,12 +704,12 @@ const padPrev = {};
 function pollGamepads() {
   const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
   if (!pads.length) return;
-  const now = { up: false, down: false, left: false, right: false, a: false, b: false, sl: false, sr: false, start: false, menu: false };
+  const now = { up: false, down: false, left: false, right: false, a: false, b: false, sl: false, sr: false, start: false, menu: false, y: false };
   for (const gp of pads) {
     const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     now.up ||= b(12) || ay < -0.5; now.down ||= b(13) || ay > 0.5;
     now.left ||= b(14) || ax < -0.5; now.right ||= b(15) || ax > 0.5;
-    now.a ||= b(0) || b(2) || b(3) || b(7); now.b ||= b(1);
+    now.a ||= b(0) || b(2) || b(7); now.b ||= b(1); now.y ||= b(3);
     now.start ||= b(9); now.menu ||= b(8) || b(16);
     now.sl ||= b(4); now.sr ||= b(5);
   }
