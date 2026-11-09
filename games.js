@@ -656,10 +656,18 @@ const GAME_LIST = [
   {
     name: 'Maze Raider', emoji: '👾', tickMs: 70,
     usesX: true,
-    help: '3D first person. ▲▼ walk, ◀▶ turn, A attacks, X switches weapon, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT attacks, X switches weapon, Y for the map. Weapons: the axe (close up, no ammo), the blaster, the shotgun (wide spread, from level 2) and the ray gun (shoots through every creature in a line, from level 3). From level 2 a red door blocks the way: find the key, then reach the green exit. The dot on the top row points to the key (gold) or the exit (green). Green orbs = health, gold orbs = ammo. Watch for bats, spitters, brutes, bombers that explode, ghosts that float through walls, and a boss every 4th level.',
+    help: '3D first person. First pick EASY, NORM or HARD with ◀▶ and press A. ▲▼ walk, ◀▶ turn, A attacks, X switches weapon, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT attacks, X switches weapon, Y for the map. Weapons: the axe (close up, no ammo), the blaster, the shotgun (wide spread, from level 2) and the ray gun (shoots through every creature in a line, from level 3). From level 2 a red door blocks the way: find the key, then reach the green exit. The dot on the top row points to the key (gold) or the exit (green). Green orbs = health, gold orbs = ammo. Watch for bats, spitters, brutes, bombers that explode, ghosts that float through walls, and a boss every 4th level.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       const VIEW = 15, MID = VIEW / 2; // rows 0..14 are the 3D view, row 15 is the status bar
+      // difficulty: picked on a start screen with ◀▶ and A, remembered for next time
+      const MODES = [
+        { name: 'EASY', c: GREEN, dmg: 0.6, spd: 0.85, mon: lv => 2 + lv * 1.5, orbs: 3, ammo: 30, bossEvery: 4, bonus: 0.5, early: false },
+        { name: 'NORM', c: GOLD, dmg: 1.25, spd: 1.1, mon: lv => 4 + lv * 2, orbs: 2, ammo: 24, bossEvery: 4, bonus: 1, early: false },
+        { name: 'HARD', c: RED, dmg: 1.7, spd: 1.3, mon: lv => 5 + lv * 3, orbs: 1, ammo: 16, bossEvery: 3, bonus: 2, early: true },
+      ];
+      let modeIdx = 1; try { modeIdx = clamp(+(localStorage.getItem('mazeMode') ?? 1) | 0, 0, 2); } catch {}
+      let D = MODES[modeIdx], picking = 0;
       let map, size, px, py, ang, hp = 100, ammo = 24, level = 0, t = 0, muzzle = 0, cool = 0, recoil = 0;
       let hasKey = false, doorLevel = false, swing = 0, tracers = [], showMap = false, keyHint = 0, rightStick = false, exitAt = [1, 1];
       // weapons in switch order; you start with the axe and the blaster
@@ -719,26 +727,29 @@ const GAME_LIST = [
         px = 1.5; py = 1.5; ang = map[1][2] ? Math.PI / 2 : 0;
         things = []; shots = []; tracers = []; seen = new Set();
         const spots = cells.filter(([x, y]) => dist[y][x] > 4 && !(keyAt && x === keyAt[0] && y === keyAt[1])).sort(() => Math.random() - 0.5);
-        const monsters = 3 + level * 2;
+        const monsters = Math.round(D.mon(level));
         // more kinds of creature join as you go deeper
         const pool = ['grunt', 'grunt', 'bat'];
+        if (D.early) pool.push('spitter'); // hard: creatures turn up a level sooner
+        if (level >= (D.early ? 2 : 3) && level < 3) pool.push('brute');
         if (level >= 2) pool.push('spitter', 'bat');
         if (level >= 3) pool.push('brute', 'bomber');
         if (level >= 4) pool.push('ghost', 'bomber');
         const addM = (type, x, y) => things.push({ kind: 'm', type, x: x + 0.5, y: y + 0.5, hp: HP[type], cool: 0, hit: 0, step: 0, side: Math.random() < 0.5 ? 1 : -1, ph: Math.random() * 6 });
         spots.slice(0, monsters).forEach(([x, y], i) => addM(i < 2 ? 'grunt' : pool[rand(pool.length)], x, y));
         // every 4th level a boss guards the exit
-        if (level % 4 === 0) addM('boss', far[0], far[1]);
+        if (level % D.bossEvery === 0) addM('boss', far[0], far[1]);
         { const e = N4.find(([dx, dy]) => map[ey + dy][ex + dx] === 9) || [0, 0]; exitAt = [ex + e[0] + 0.5, ey + e[1] + 0.5]; }
         let s = monsters;
         const put = kind => { const p = spots[s++]; if (p) things.push({ kind, x: p[0] + 0.5, y: p[1] + 0.5 }); };
-        put('h'); put('h'); put('a'); put('a');
+        for (let i = 0; i < D.orbs; i++) put('h'); put('a'); put('a');
         if (!owned.has('shotgun') && level >= 2) put('w');
         if (!owned.has('ray') && level >= 3) put('r');
         if (keyAt) things.push({ kind: 'k', x: keyAt[0] + 0.5, y: keyAt[1] + 0.5 });
-        card(g, ['LV', String(level)], WHITE, 1100);
+        if (picking < 0) card(g, ['LV', String(level)], WHITE, 1100);
       }
       buildLevel();
+      g.pick = i => { modeIdx = i; picking = -1; }; // for tests: skip the start screen
       g.peek = () => ({ map, size, px, py, ang, things, hasKey, doorLevel, level, hp, wep, owned, ammo }); // for tests
 
       const wall = (x, y) => (x < 0 || y < 0 || x >= size || y >= size) ? 1 : map[Math.floor(y)][Math.floor(x)];
@@ -814,7 +825,7 @@ const GAME_LIST = [
         }
         return null;
       }
-      function hurt(dmg) { hp -= dmg; flash(g, RED, 2); shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
+      function hurt(dmg) { hp -= Math.round(dmg * D.dmg); flash(g, RED, 2); shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
       function damage(m, n) {
         m.hp -= n; m.hit = 1; m.alert = true; fx(g, 'hit');
         if (m.hp <= 0) {
@@ -826,6 +837,27 @@ const GAME_LIST = [
 
       g.tick = (inp, rgb) => {
         t++;
+        if (picking >= 0 || picking === -1 && !D.started) {
+          // start screen: choose how hard it is
+          if (picking >= 0) {
+            picking++;
+            if (inp.pressed.has('left') || inp.pressed.has('up')) { modeIdx = (modeIdx + 2) % 3; fx(g, 'click'); }
+            if (inp.pressed.has('right') || inp.pressed.has('down')) { modeIdx = (modeIdx + 1) % 3; fx(g, 'click'); }
+            if (picking > 4 && inp.pressed.has('a')) picking = -1;
+          }
+          if (picking === -1) {
+            D = { ...MODES[modeIdx], started: true }; ammo = D.ammo; level = 0; fx(g, 'power');
+            try { localStorage.setItem('mazeMode', modeIdx); } catch {}
+            buildLevel(); return g.tick({ held: {}, pressed: new Set() }, rgb);
+          }
+          fill(rgb, BLACK);
+          const m = MODES[modeIdx];
+          drawText(rgb, m.name, 5, m.c);
+          if (t % 10 < 6) for (const [x, y] of [[2, 12], [3, 11], [3, 13], [12, 12], [11, 11], [11, 13]]) set(rgb, x, y, WHITE); // ◀ ▶
+          MODES.forEach((o, i) => { const x = 5 + i * 2; set(rgb, x, 12, i === modeIdx ? o.c : DARK); });
+          for (let i = 0; i <= modeIdx; i++) { set(rgb, 6 + i * 2 - 1, 1, MODES[modeIdx].c); } // skulls of danger: 1 to 3 dots
+          return;
+        }
         const h = inp.held, me = { x: px, y: py };
         if (inp.pressed.has('y')) { showMap = !showMap; fx(g, 'click'); }
         // right stick looks around (further = faster). Once it's in use, the left stick sidesteps instead of turning.
@@ -852,7 +884,7 @@ const GAME_LIST = [
         }
         // reached the exit: bonus, then the next level
         if (touching(9)) {
-          g.score += 50 + level * 10 + Math.floor(hp / 2); fx(g, 'level'); flash(g, GREEN);
+          g.score += Math.round((50 + level * 10 + Math.floor(hp / 2)) * D.bonus); fx(g, 'level'); flash(g, GREEN);
           buildLevel(); dx = Math.cos(ang); dy = Math.sin(ang);
         }
 
@@ -910,7 +942,7 @@ const GAME_LIST = [
           const d = Math.hypot(px - m.x, py - m.y), ghost = m.type === 'ghost';
           const see = ghost ? d < 8 : d < 9 && sight(m.x, m.y, px, py);
           if (see && d < 7) m.alert = true;
-          const spd = { grunt: 0.05, brute: 0.035, spitter: 0.04, bat: 0.08, bomber: 0.06, ghost: 0.03, boss: 0.03 }[m.type];
+          const spd = { grunt: 0.05, brute: 0.035, spitter: 0.04, bat: 0.08, bomber: 0.06, ghost: 0.03, boss: 0.03 }[m.type] * D.spd;
           if (see && m.alert) {
             const ux = (px - m.x) / d, uy = (py - m.y) / d;
             if (ghost) { // drifts straight through walls
@@ -924,7 +956,7 @@ const GAME_LIST = [
             }
             if (m.type === 'boss' && !m.cool && d > 1.5) {
               m.cool = 45;
-              for (const a of [-0.25, 0, 0.25]) { const c = Math.cos(a), s2 = Math.sin(a); shots.push({ kind: 'p', x: m.x, y: m.y, vx: (ux * c - uy * s2) * 0.15, vy: (ux * s2 + uy * c) * 0.15, life: 120 }); }
+              for (const a of [-0.25, 0, 0.25]) { const c = Math.cos(a), s2 = Math.sin(a); shots.push({ kind: 'p', x: m.x, y: m.y, vx: (ux * c - uy * s2) * 0.15 * D.spd, vy: (ux * s2 + uy * c) * 0.15 * D.spd, life: 120 }); }
               fx(g, 'shoot');
             }
             if (m.type === 'bat') { const w = Math.sin(t / 4 + m.ph) * 0.6; move((ux - uy * w) * spd, (uy + ux * w) * spd, m); m.step += 0.2; if (d < 0.6 && !m.cool) { hurt(5); m.cool = 10; } continue; }
@@ -935,7 +967,7 @@ const GAME_LIST = [
               m.step += 0.12;
               if (!m.cool) {
                 m.charge = (m.charge || 0) + 1;
-                if (m.charge >= 10) { m.charge = 0; m.cool = 50 + rand(30); shots.push({ kind: 'p', x: m.x, y: m.y, vx: ux * 0.14, vy: uy * 0.14, life: 120 }); fx(g, 'shoot'); }
+                if (m.charge >= 10) { m.charge = 0; m.cool = 50 + rand(30); shots.push({ kind: 'p', x: m.x, y: m.y, vx: ux * 0.14 * D.spd, vy: uy * 0.14 * D.spd, life: 120 }); fx(g, 'shoot'); }
               }
             } else if (d > (m.type === 'boss' ? 1 : 0.7)) { move(ux * spd, uy * spd, m); m.step += 0.15; }
             else if (!m.cool) { hurt({ brute: 15, boss: 20 }[m.type] || 8); m.cool = m.type === 'grunt' ? 12 : 18; }
