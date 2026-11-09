@@ -62,6 +62,17 @@
   .progress { height: 4px; background: var(--panel2); border-radius: 2px; overflow: hidden; margin-top: 6px; }
   .progress i { display: block; height: 100%; width: 0; background: var(--accent2); transition: width .1s; }
   .warnbox { background: #3a1b26; border: 1px solid #6b2a40; color: #ffd0dc; border-radius: 12px; padding: 12px; font-size: 13px; margin-bottom: 12px; display: none; }
+  .cropwrap { position: relative; margin-top: 10px; background: #000; border-radius: 10px; overflow: hidden; touch-action: none; }
+  .cropwrap canvas { width: 100%; display: block; }
+  .lib { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+  .lib .item { position: relative; background: #000; border-radius: 10px; border: 1px solid var(--line); padding: 4px; cursor: pointer; }
+  .lib canvas { width: 100%; aspect-ratio: 1; display: block; image-rendering: pixelated; }
+  .lib .del { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; font-size: 12px; line-height: 1; background: var(--panel2); }
+  .pad { position: sticky; bottom: 0; z-index: 6; background: var(--panel); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 64px) 1fr; grid-template-rows: 56px 56px; gap: 8px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
+  .pad button { font-size: 20px; padding: 0; touch-action: none; }
+  .pad .abtn { grid-column: 4; grid-row: 1 / span 2; border-radius: 50%; width: 112px; height: 112px; justify-self: end; background: var(--accent); border-color: var(--accent); font-size: 28px; }
+  .pad button.down { background: var(--accent2); color: #000; }
+  .tabs button { padding: 9px 2px; font-size: 12px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -88,6 +99,7 @@
     <button data-tab="fun" class="active">✨ Fun</button>
     <button data-tab="pic">🖼️ Picture</button>
     <button data-tab="text">🔤 Text</button>
+    <button data-tab="games">🎮 Games</button>
     <button data-tab="draw">✏️ Draw</button>
     <button data-tab="ctl">🎛️ Controls</button>
   </nav>
@@ -109,20 +121,43 @@
   <section id="pic">
     <div class="card">
       <h2>Image or GIF</h2>
-      <label class="file" id="dropZone">Tap to choose a photo, PNG or animated GIF<input type="file" id="picFile" accept="image/*"></label>
-      <label>Fit</label>
-      <select id="picFit">
-        <option value="cover">Fill (crop edges)</option>
-        <option value="contain">Fit (letterbox)</option>
-        <option value="stretch">Stretch</option>
-      </select>
-      <label class="check"><input type="checkbox" id="picSmooth" checked> Smooth scaling (best for photos; untick for pixel art)</label>
-      <label>Colour boost</label>
-      <input type="range" id="picBoost" min="0" max="100" value="30">
-      <div class="row" style="margin-top:10px">
-        <button class="primary" id="picSend" disabled>Send to Tivoo</button>
+      <label class="file" id="dropZone"><span id="dropText">Tap to choose a photo, PNG or animated GIF</span><input type="file" id="picFile" accept="image/*"></label>
+      <div id="picEdit" style="display:none">
+        <label>Fit</label>
+        <select id="picFit">
+          <option value="crop">Crop (drag the box, pinch or use the zoom slider)</option>
+          <option value="contain">Fit whole picture (letterbox)</option>
+          <option value="stretch">Stretch</option>
+        </select>
+        <div id="cropWrap" class="cropwrap">
+          <canvas id="cropCv"></canvas>
+        </div>
+        <div id="cropZoomRow">
+          <label>Zoom</label>
+          <input type="range" id="cropZoom" min="100" max="800" value="100">
+        </div>
+        <label class="check"><input type="checkbox" id="picSmooth" checked> Smooth scaling (photos). Untick for pixel art</label>
+        <label>Colour boost</label>
+        <input type="range" id="picBoost" min="0" max="100" value="30">
+        <label>Speed</label>
+        <select id="picSpeed">
+          <option value="0.5">0.5× (slower)</option>
+          <option value="1" selected>1× (original)</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2× (faster)</option>
+        </select>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" id="picSend" disabled>Send to Tivoo</button>
+          <button id="picSave" disabled>☆ Save to library</button>
+        </div>
+        <p class="hint" id="picInfo"></p>
       </div>
-      <p class="hint" id="picInfo"></p>
+    </div>
+    <div class="card">
+      <h2>My library</h2>
+      <div class="lib" id="lib"></div>
+      <p class="hint" id="libEmpty">Saved pictures and GIFs appear here, so you can resend them with one tap. They're stored only on this phone.</p>
+      <p class="hint">Tip: install the app (Chrome menu → <b>Add to Home screen</b>), then use <b>Share → Tivoo Studio</b> from your gallery or browser to send a GIF straight here.</p>
     </div>
   </section>
 
@@ -152,6 +187,37 @@
         <button class="secondary" id="txtLive">Stream live</button>
       </div>
       <p class="hint">Long text is scrolled in bigger steps so it fits the Tivoo's 60-frame limit. Use Stream live for smooth scrolling of long messages.</p>
+    </div>
+  </section>
+
+  <!-- GAMES -->
+  <section id="games">
+    <div class="card">
+      <h2>Games</h2>
+      <div class="grid" id="gameGrid"></div>
+      <p class="hint" id="gameHelp"></p>
+      <div class="row" style="margin:10px 0 4px">
+        <button class="primary" id="gameStart">▶ Play</button>
+        <div style="flex:none;text-align:right;font-size:13px;color:var(--muted)">Score <b id="gameScore" style="color:var(--text)">0</b> · Best <b id="gameBest">0</b></div>
+      </div>
+      <div class="pad">
+        <span></span><button data-key="up">▲</button><span></span>
+        <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
+        <button data-key="a" class="abtn">A</button>
+      </div>
+      <p class="hint">You can also swipe or tap on the preview screen above. On a computer, use the arrow keys and Space.</p>
+    </div>
+    <div class="card">
+      <h2>Tivoo's own games</h2>
+      <div class="row">
+        <div><label>Game #</label><input type="number" id="bgNum" min="0" max="20" value="0"></div>
+        <div style="flex:none;align-self:end"><button id="bgStart">Start</button></div>
+        <div style="flex:none;align-self:end"><button id="bgStop">Exit</button></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button data-bg="go">GO</button><button data-bg="left">◀</button><button data-bg="up">▲</button><button data-bg="down">▼</button><button data-bg="right">▶</button><button data-bg="ok">OK</button>
+      </div>
+      <p class="hint">These run on the speaker itself (for example the magic 8-ball). The numbers vary by firmware, so try a few.</p>
     </div>
   </section>
 

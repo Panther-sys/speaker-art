@@ -196,6 +196,12 @@ export const cmd = {
   off: () => message(CMD.view, [0x01, 1, 1, 1, 0, 0, 0, 0, 0, 0]),
   on: () => message(CMD.view, [0x01, 1, 1, 1, 100, 0, 1, 0, 0, 0]),
   getView: () => message(CMD.getView, []),
+  game: n => message(CMD.game, n == null ? [0, 0] : [1, n & 0xff]),
+  gameKey: key => {
+    const k = { go: 0, left: 1, right: 2, up: 3, down: 4, ok: 5 }[key];
+    if (!k) return [message(0x88, [])];
+    return [message(0x17, [k]), message(0x21, [k])];
+  },
 };
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); }
