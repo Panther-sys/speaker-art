@@ -656,7 +656,7 @@ const GAME_LIST = [
   {
     name: 'Maze Raider', emoji: '👾', tickMs: 70,
     usesX: true,
-    help: '3D first person. First pick EASY, NORM or HARD with ◀▶ and press A. ▲▼ walk, ◀▶ turn, A attacks, X switches weapon, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT attacks, X switches weapon, Y for the map. Weapons: the axe (close up, no ammo), the blaster, the shotgun (wide spread, from level 2) and the ray gun (shoots through every creature in a line, from level 3). From level 2 a red door blocks the way: find the key, then reach the green exit. The dot on the top row points to the key (gold) or the exit (green). Green orbs = health, gold orbs = ammo. Watch for bats, spitters, brutes, bombers that explode, ghosts that float through walls, and a boss every 4th level.',
+    help: '3D first person. First pick EASY, NORM or HARD with ◀▶ and press A. ▲▼ walk, ◀▶ turn, A attacks, X switches weapon, Y shows the map. Xbox: right stick looks around, left stick walks and sidesteps, A or RT attacks, RB / LB next / previous weapon, X quick axe swing, Y for the map. Weapons: the axe (close up, no ammo), the blaster, the shotgun (wide spread, from level 2) and the ray gun (shoots through every creature in a line, from level 3). From level 2 a red door blocks the way: find the key, then reach the green exit. The dot on the top row points to the key (gold) or the exit (green). Green orbs = health, gold orbs = ammo. Watch for bats, spitters, brutes, bombers that explode, ghosts that float through walls, and a boss every 4th level.',
     create() {
       const g = { score: 0, over: false, tickMs: 70 };
       const VIEW = 15, MID = VIEW / 2; // rows 0..14 are the 3D view, row 15 is the status bar
@@ -882,8 +882,6 @@ const GAME_LIST = [
         if (stickSide) move(-dy * sp * 0.8 * ax.lx, dx * sp * 0.8 * ax.lx, me);
         if (h.up) move(dx * sp, dy * sp, me);
         if (h.down) move(-dx * sp * 0.9, -dy * sp * 0.9, me); // backing off is nearly as fast as walking
-        if (h.sl) move(dy * sp * 0.8, -dx * sp * 0.8, me);
-        if (h.sr) move(-dy * sp * 0.8, dx * sp * 0.8, me);
         px = me.x; py = me.y;
         const touching = v => [[dx * 0.45, dy * 0.45], [0.4, 0], [-0.4, 0], [0, 0.4], [0, -0.4]].map(([ox, oy]) => [px + ox, py + oy]).find(([x, y]) => wall(x, y) === v);
 
@@ -1011,22 +1009,27 @@ const GAME_LIST = [
         if (cool) cool--;
         if (recoil) recoil--;
         if (swing) swing--;
-        if (inp.pressed.has('x')) { // next weapon you own
+        // X or RB: next weapon you own, LB: previous one
+        const dir = inp.pressed.has('sl') ? -1 : (inp.pressed.has('x') || inp.pressed.has('sr')) ? 1 : 0;
+        if (dir) {
           let i = WEP.indexOf(wep);
-          do i = (i + 1) % WEP.length; while (!owned.has(WEP[i]));
+          do i = (i + dir + WEP.length) % WEP.length; while (!owned.has(WEP[i]));
           wep = WEP[i]; cool = Math.max(cool, 3); fx(g, 'click');
         }
-        if ((inp.pressed.has('a') || h.a) && !h.x && !cool) {
+        // Xbox X: a quick axe swing whatever you're holding, then straight back to your gun
+        const quick = inp.pressed.has('melee');
+        if ((quick || ((inp.pressed.has('a') || h.a) && !h.melee)) && !cool) {
+          const w = quick ? 'axe' : wep;
           const live = things.filter(m => m.kind === 'm' && m.hp > 0).map(m => {
             const rx = m.x - px, ry = m.y - py;
             return { m, depth: rx * dx + ry * dy, lateral: -rx * dy + ry * dx };
-          }).filter(s => s.depth > (wep === 'axe' ? -0.3 : -0.2) && sight(px, py, s.m.x, s.m.y));
+          }).filter(s => s.depth > (w === 'axe' ? -0.3 : -0.2) && sight(px, py, s.m.x, s.m.y));
           // anything right on top of you gets hit by every weapon, even if it's a little to the side
           const close = s => Math.hypot(s.depth, s.lateral) < 0.8;
           // the firing look everyone liked on the shotgun: a fan of three trails, a white muzzle flash and a small kick
           const fan = (spread, c, far) => { for (const o of [-spread, 0, spread]) { const d0 = Math.min(ahead, far), c2 = Math.cos(ang + o), s2 = Math.sin(ang + o); tracers.push({ x: px + c2 * d0, y: py + s2 * d0, c, life: 2 }); } };
           const ahead = Math.max(zbuf[7], zbuf[8]);
-          if (wep === 'axe') { // a wide swing that hits everything right in front of you
+          if (w === 'axe') { // a wide swing that hits everything right in front of you
             cool = 6; swing = 4; fx(g, 'jump');
             let hit = false;
             // hits anything in a wide arc in front of you, and anything that's right on top of you
@@ -1040,12 +1043,12 @@ const GAME_LIST = [
             if (hit) shake(g, 1);
           } else if (ammo <= 0) { // out of ammo: back to the axe
             wep = 'axe'; fx(g, 'click'); cool = 4;
-          } else if (wep === 'shotgun') { // a wide spread that can hit several monsters
+          } else if (w === 'shotgun') { // a wide spread that can hit several monsters
             ammo--; muzzle = 2; recoil = 2; cool = 9; shake(g, 1); fx(g, 'shoot');
             const hits = live.filter(s => close(s) || (s.depth > 0 && s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2));
             for (const s of hits) damage(s.m, s.depth < 3 ? 3 : 2);
             fan(0.25, GOLD, 4);
-          } else if (wep === 'ray') { // a beam that goes through every monster in a line
+          } else if (w === 'ray') { // a beam that goes through every monster in a line
             ammo = Math.max(0, ammo - 2); muzzle = 3; recoil = 2; cool = 11; shake(g, 1); fx(g, 'power');
             for (const s of live) if (close(s) || (Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3)) damage(s.m, 3);
             tracers.push({ x: px + dx * ahead, y: py + dy * ahead, c: YOU, life: 3, beam: true });
@@ -1098,7 +1101,7 @@ const GAME_LIST = [
         }
         tracers = tracers.filter(tr => tr.life > 0);
         const bob = (h.up || h.down) && t % 6 < 3 ? 1 : 0, kick = recoil ? 1 : 0;
-        if (wep === 'axe') { // the axe rests at the right and sweeps across when you swing
+        if (wep === 'axe' || swing) { // the axe rests at the right and sweeps across when you swing
           const [ax0, ay0] = [[11, 9], [4, 10], [7, 8], [9, 6], [11, 6]][swing], y0 = ay0 + (swing ? 0 : bob);
           for (const [ox, oy] of [[0, -1], [0, 0], [1, 1], [1, 2], [2, 3], [2, 4]]) set(rgb, ax0 + ox, y0 + oy, DARK);   // handle
           for (const [ox, oy] of [[-1, -1], [-2, -1], [-1, 0], [-2, 0], [-3, 0], [-1, 1], [-2, 1]]) set(rgb, ax0 + ox, y0 + oy, WHITE); // blade
