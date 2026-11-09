@@ -663,13 +663,13 @@ const GAME_LIST = [
       // difficulty: picked on a start screen with ◀▶ and A, remembered for next time
       const MODES = [
         { name: 'EASY', c: GREEN, dmg: 0.6, spd: 0.85, mon: lv => 2 + lv * 1.5, orbs: 3, ammo: 30, bossEvery: 4, bonus: 0.5, early: false },
-        { name: 'NORM', c: GOLD, dmg: 1.25, spd: 1.1, mon: lv => 4 + lv * 2, orbs: 2, ammo: 24, bossEvery: 4, bonus: 1, early: false },
+        { name: 'NORM', c: GOLD, dmg: 1.4, spd: 1.1, mon: lv => 4 + lv * 2, orbs: 2, ammo: 24, bossEvery: 4, bonus: 1, early: false },
         { name: 'HARD', c: RED, dmg: 1.7, spd: 1.3, mon: lv => 5 + lv * 3, orbs: 1, ammo: 16, bossEvery: 3, bonus: 2, early: true },
       ];
       let modeIdx = 1; try { modeIdx = clamp(+(localStorage.getItem('mazeMode') ?? 1) | 0, 0, 2); } catch {}
       let D = MODES[modeIdx], picking = 0;
       let map, size, px, py, ang, hp = 100, ammo = 24, level = 0, t = 0, muzzle = 0, cool = 0, recoil = 0;
-      let hasKey = false, doorLevel = false, swing = 0, tracers = [], showMap = false, keyHint = 0, rightStick = false, exitAt = [1, 1];
+      let hasKey = false, doorLevel = false, swing = 0, safe = 0, tracers = [], showMap = false, keyHint = 0, rightStick = false, exitAt = [1, 1];
       // weapons in switch order; you start with the axe and the blaster
       const WEP = ['axe', 'blaster', 'shotgun', 'ray'], owned = new Set(['axe', 'blaster']);
       const WNAME = { axe: 'AXE', blaster: 'PEW', shotgun: 'GUN', ray: 'RAY' };
@@ -825,7 +825,18 @@ const GAME_LIST = [
         }
         return null;
       }
-      function hurt(dmg) { hp -= Math.round(dmg * D.dmg); flash(g, RED, 2); shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
+      // push a creature straight away from you (it still can't go through walls)
+      function shove(m, dist) {
+        const d = Math.hypot(m.x - px, m.y - py) || 1, ux = (m.x - px) / d, uy = (m.y - py) / d;
+        for (let i = 0; i < 4; i++) move(ux * dist / 4, uy * dist / 4, m);
+      }
+      // after a hit you get a short moment where nothing can hurt you, and the creature that hit you bounces back,
+      // so you have a chance to swing back or get away instead of being chewed up while it sits on top of you
+      function hurt(dmg, from) {
+        if (safe) return;
+        safe = 6;
+        if (from) shove(from, from.type === 'brute' || from.type === 'boss' ? 0.3 : 0.5);
+        hp -= Math.round(dmg * D.dmg); flash(g, RED, 2); shake(g, 2); navigator.vibrate?.(60); fx(g, 'hurt'); }
       function damage(m, n) {
         m.hp -= n; m.hit = 1; m.alert = true; fx(g, 'hit');
         if (m.hp <= 0) {
@@ -859,6 +870,7 @@ const GAME_LIST = [
           return;
         }
         const h = inp.held, me = { x: px, y: py };
+        if (safe) safe--;
         if (inp.pressed.has('y')) { showMap = !showMap; fx(g, 'click'); }
         // right stick looks around (further = faster). Once it's in use, the left stick sidesteps instead of turning.
         const ax = inp.axes || {};
@@ -869,7 +881,7 @@ const GAME_LIST = [
         const sp = 0.12;
         if (stickSide) move(-dy * sp * 0.8 * ax.lx, dx * sp * 0.8 * ax.lx, me);
         if (h.up) move(dx * sp, dy * sp, me);
-        if (h.down) move(-dx * sp * 0.7, -dy * sp * 0.7, me);
+        if (h.down) move(-dx * sp * 0.9, -dy * sp * 0.9, me); // backing off is nearly as fast as walking
         if (h.sl) move(dy * sp * 0.8, -dx * sp * 0.8, me);
         if (h.sr) move(-dy * sp * 0.8, dx * sp * 0.8, me);
         px = me.x; py = me.y;
@@ -947,7 +959,7 @@ const GAME_LIST = [
             const ux = (px - m.x) / d, uy = (py - m.y) / d;
             if (ghost) { // drifts straight through walls
               if (d > 0.6) { m.x = clamp(m.x + ux * spd, 1, size - 1); m.y = clamp(m.y + uy * spd, 1, size - 1); }
-              else if (!m.cool) { hurt(10); m.cool = 16; }
+              else if (!m.cool) { hurt(10, m); m.cool = 16; }
               continue;
             }
             if (m.type === 'bomber') { // runs at you, lights its fuse and blows up
@@ -959,7 +971,7 @@ const GAME_LIST = [
               for (const a of [-0.25, 0, 0.25]) { const c = Math.cos(a), s2 = Math.sin(a); shots.push({ kind: 'p', x: m.x, y: m.y, vx: (ux * c - uy * s2) * 0.15 * D.spd, vy: (ux * s2 + uy * c) * 0.15 * D.spd, life: 120 }); }
               fx(g, 'shoot');
             }
-            if (m.type === 'bat') { const w = Math.sin(t / 4 + m.ph) * 0.6; move((ux - uy * w) * spd, (uy + ux * w) * spd, m); m.step += 0.2; if (d < 0.6 && !m.cool) { hurt(5); m.cool = 10; } continue; }
+            if (m.type === 'bat') { const w = Math.sin(t / 4 + m.ph) * 0.6; move((ux - uy * w) * spd, (uy + ux * w) * spd, m); m.step += 0.2; if (d < 0.6 && !m.cool) { hurt(5, m); m.cool = 10; } continue; }
             if (m.type === 'spitter') {
               if (d < 3) move(-ux * spd, -uy * spd, m);
               else if (d > 5.5) move(ux * spd, uy * spd, m);
@@ -970,7 +982,7 @@ const GAME_LIST = [
                 if (m.charge >= 10) { m.charge = 0; m.cool = 50 + rand(30); shots.push({ kind: 'p', x: m.x, y: m.y, vx: ux * 0.14 * D.spd, vy: uy * 0.14 * D.spd, life: 120 }); fx(g, 'shoot'); }
               }
             } else if (d > (m.type === 'boss' ? 1 : 0.7)) { move(ux * spd, uy * spd, m); m.step += 0.15; }
-            else if (!m.cool) { hurt({ brute: 15, boss: 20 }[m.type] || 8); m.cool = m.type === 'grunt' ? 12 : 18; }
+            else if (!m.cool) { hurt({ brute: 15, boss: 20 }[m.type] || 8, m); m.cool = m.type === 'grunt' ? 12 : 18; }
           } else { // wander about
             if (m.wd == null || Math.random() < 0.02) m.wd = Math.random() * Math.PI * 2;
             const ox = m.x, oy = m.y; move(Math.cos(m.wd) * 0.015, Math.sin(m.wd) * 0.015, m);
@@ -1008,30 +1020,41 @@ const GAME_LIST = [
           const live = things.filter(m => m.kind === 'm' && m.hp > 0).map(m => {
             const rx = m.x - px, ry = m.y - py;
             return { m, depth: rx * dx + ry * dy, lateral: -rx * dy + ry * dx };
-          }).filter(s => s.depth > 0.1 && sight(px, py, s.m.x, s.m.y));
+          }).filter(s => s.depth > (wep === 'axe' ? -0.3 : -0.2) && sight(px, py, s.m.x, s.m.y));
+          // anything right on top of you gets hit by every weapon, even if it's a little to the side
+          const close = s => Math.hypot(s.depth, s.lateral) < 0.8;
+          // the firing look everyone liked on the shotgun: a fan of three trails, a white muzzle flash and a small kick
+          const fan = (spread, c, far) => { for (const o of [-spread, 0, spread]) { const d0 = Math.min(ahead, far), c2 = Math.cos(ang + o), s2 = Math.sin(ang + o); tracers.push({ x: px + c2 * d0, y: py + s2 * d0, c, life: 2 }); } };
           const ahead = Math.max(zbuf[7], zbuf[8]);
           if (wep === 'axe') { // a wide swing that hits everything right in front of you
-            cool = 7; swing = 4; fx(g, 'jump');
+            cool = 6; swing = 4; fx(g, 'jump');
             let hit = false;
-            for (const s of live) if (s.depth < 1.5 && Math.abs(s.lateral) < 0.7) { damage(s.m, 3); hit = true; }
+            // hits anything in a wide arc in front of you, and anything that's right on top of you
+            for (const s of live) {
+              const d = Math.hypot(s.depth, s.lateral), a = Math.abs(Math.atan2(s.lateral, s.depth));
+              if (d < 0.8 || (d < 1.8 && a < 1)) {
+                damage(s.m, 3); hit = true;
+                if (s.m.hp > 0) { shove(s.m, s.m.type === 'brute' || s.m.type === 'boss' ? 0.3 : 0.6); s.m.cool = Math.max(s.m.cool, 8); }
+              }
+            }
             if (hit) shake(g, 1);
           } else if (ammo <= 0) { // out of ammo: back to the axe
             wep = 'axe'; fx(g, 'click'); cool = 4;
           } else if (wep === 'shotgun') { // a wide spread that can hit several monsters
             ammo--; muzzle = 2; recoil = 2; cool = 9; shake(g, 1); fx(g, 'shoot');
-            const hits = live.filter(s => s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2);
+            const hits = live.filter(s => close(s) || (s.depth > 0 && s.depth < 7 && Math.abs(s.lateral) < 0.3 + s.depth * 0.2));
             for (const s of hits) damage(s.m, s.depth < 3 ? 3 : 2);
-            for (const o of [-0.25, 0, 0.25]) { const d0 = Math.min(ahead, 4), c = Math.cos(ang + o), s2 = Math.sin(ang + o); tracers.push({ x: px + c * d0, y: py + s2 * d0, c: GOLD, life: 2 }); }
+            fan(0.25, GOLD, 4);
           } else if (wep === 'ray') { // a beam that goes through every monster in a line
-            ammo = Math.max(0, ammo - 2); muzzle = 3; recoil = 2; cool = 11; fx(g, 'power');
-            for (const s of live) if (Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3) damage(s.m, 3);
+            ammo = Math.max(0, ammo - 2); muzzle = 3; recoil = 2; cool = 11; shake(g, 1); fx(g, 'power');
+            for (const s of live) if (close(s) || (Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3)) damage(s.m, 3);
             tracers.push({ x: px + dx * ahead, y: py + dy * ahead, c: YOU, life: 3, beam: true });
+            fan(0.18, YOU, 3);
           } else {
-            ammo--; muzzle = 2; recoil = 2; cool = 4; fx(g, 'shoot');
-            const best = live.filter(s => Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3).sort((a, b) => a.depth - b.depth)[0];
+            ammo--; muzzle = 2; recoil = 2; cool = 4; shake(g, 1); fx(g, 'shoot');
+            const best = live.filter(s => close(s) || (s.depth > 0 && Math.abs(s.lateral) < 0.35 && s.depth < ahead + 0.3)).sort((a, b) => Math.hypot(a.depth, a.lateral) - Math.hypot(b.depth, b.lateral))[0];
             if (best) damage(best.m, 1);
-            const e = best ? best.m : { x: px + dx * ahead, y: py + dy * ahead };
-            tracers.push({ x: e.x, y: e.y, c: GOLD, life: 2, spark: !!best });
+            fan(0.12, GOLD, best ? Math.max(0.5, best.depth) : 3);
           }
         }
 
@@ -1088,11 +1111,11 @@ const GAME_LIST = [
           set(rgb, 7, 12 + bob + kick, YOU); set(rgb, 8, 12 + bob + kick, YOU);
           set(rgb, 7, 13 + bob, WHITE); set(rgb, 8, 13 + bob, WHITE);
           for (let x = 6; x <= 9; x++) set(rgb, x, 14, GREY);
-          if (muzzle) muzzle--;
+          if (muzzle) { muzzle--; set(rgb, 7, 11, WHITE); set(rgb, 8, 11, WHITE); }
         } else {
           set(rgb, 7, 13 + bob + kick, WHITE); set(rgb, 8, 13 + bob + kick, WHITE);
           set(rgb, 7, 14, GREY); set(rgb, 8, 14, GREY);
-          if (muzzle) muzzle--;
+          if (muzzle) { muzzle--; set(rgb, 7, 12, WHITE); set(rgb, 8, 12, WHITE); }
         }
         if (showMap) {
           // the map shows only places you have seen

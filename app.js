@@ -1,8 +1,8 @@
-import * as D from './divoom.js?v=15';
-import { EFFECTS, renderFrames } from './effects.js?v=15';
-import { GAMES, gameOverFrame } from './games.js?v=15';
-import * as sfx from './sfx.js?v=15';
-import { drawLibrary, drawPause } from './menu.js?v=15';
+import * as D from './divoom.js?v=16';
+import { EFFECTS, renderFrames } from './effects.js?v=16';
+import { GAMES, gameOverFrame } from './games.js?v=16';
+import * as sfx from './sfx.js?v=16';
+import { drawLibrary, drawPause } from './menu.js?v=16';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -860,3 +860,49 @@ function hsv(h) { const f = n => { const k = (n + h * 6) % 6; return Math.round(
 // start with an animation in the preview
 previewFx();
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// ---------- install and update ----------
+const APP_VERSION = 16; // bump with each release, together with version.json, the ?v= imports and the cache name in sw.js
+$('appVer').textContent = APP_VERSION;
+let installEvt = null;
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+function showInstall() {
+  const can = !!installEvt && !standalone();
+  $('installBar').classList.toggle('show', can && !(() => { try { return localStorage.getItem('installHidden'); } catch { return null; } })());
+  $('installBtn2').disabled = !can;
+  $('installBtn2').textContent = standalone() ? 'Installed ✓' : 'Install on this phone';
+}
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; showInstall(); });
+addEventListener('appinstalled', () => { installEvt = null; showInstall(); });
+async function doInstall() {
+  if (!installEvt) return;
+  installEvt.prompt();
+  const r = await installEvt.userChoice.catch(() => null);
+  if (r?.outcome === 'dismissed') try { localStorage.setItem('installHidden', '1'); } catch {}
+  installEvt = null; showInstall();
+}
+$('installBtn').onclick = doInstall; $('installBtn2').onclick = doInstall;
+showInstall();
+
+async function checkUpdate(byHand) {
+  $('updStatus').textContent = 'checking…';
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    const v = await r.json();
+    if (v.version > APP_VERSION) {
+      $('updateNotes').textContent = v.notes ? 'Adds: ' + v.notes : 'Version ' + v.version;
+      $('updateBar').classList.add('show');
+      $('updStatus').textContent = 'version ' + v.version + ' is ready';
+      if (byHand) $('updateBar').scrollIntoView({ behavior: 'smooth' });
+    } else { $('updateBar').classList.remove('show'); $('updStatus').textContent = 'you have the latest version'; }
+  } catch { $('updStatus').textContent = navigator.onLine === false ? 'offline, try again later' : 'could not check right now'; }
+}
+$('checkUpd').onclick = () => checkUpdate(true);
+$('updateBtn').onclick = async () => {
+  $('updateBtn').disabled = true; $('updateBtn').textContent = 'Updating…';
+  try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch {}
+  location.reload();
+};
+checkUpdate();
+setInterval(checkUpdate, 30 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
