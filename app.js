@@ -1,6 +1,6 @@
-import * as D from './divoom.js?v=4';
-import { EFFECTS, renderFrames } from './effects.js?v=4';
-import { GAMES, gameOverFrame } from './games.js?v=4';
+import * as D from './divoom.js?v=6';
+import { EFFECTS, renderFrames } from './effects.js?v=6';
+import { GAMES, gameOverFrame } from './games.js?v=6';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -38,6 +38,18 @@ class Tivoo {
     try { this.writer?.releaseLock(); } catch {}
     try { await this.port?.close(); } catch {}
     this.port = this.writer = this.reader = null;
+  }
+
+  // For live frames: send now if free, otherwise remember only the newest frame and
+  // send it the moment the previous one is done. No backlog, no long pauses.
+  sendLatest(rgb) {
+    if (this.busy || this.inFlight) { this.latest = rgb.slice(); return; }
+    this.inFlight = true;
+    this.send(D.imageMessages(rgb)).finally(() => {
+      this.inFlight = false;
+      const next = this.latest; this.latest = null;
+      if (next && this.writer) this.sendLatest(next);
+    }).catch(() => {});
   }
 
   // Queue messages so they are written one after another.
@@ -114,7 +126,7 @@ const player = {
       const start = performance.now();
       draw(t++, rgb);
       drawLeds(rgb);
-      if (tivoo.connected && !tivoo.busy) tivoo.send(D.imageMessages(rgb));
+      if (tivoo.connected) tivoo.sendLatest(rgb);
       this.timer = setTimeout(tick, Math.max(frameMs, 90) - (performance.now() - start));
     };
     tick();
@@ -535,7 +547,7 @@ function startGame() {
   liveSource = 'game';
   game = gameSel.create(); gameT = 0;
   input.pressed.clear();
-  $('gameStart').textContent = '■ Stop';
+  $('gameStart').textContent = '■ Stop'; $('bpPlay').textContent = '■'; $('bpGame').textContent = gameSel.name; keepAwake();
   $('badge').textContent = tivoo.connected ? '● game on Tivoo' : 'game preview';
   ui.status(`Playing ${gameSel.name}.${tivoo.connected ? '' : ' Connect to play it on the Tivoo.'}`);
   const rgb = new Uint8Array(N * N * 3);
@@ -545,7 +557,7 @@ function startGame() {
     if (!game.over) {
       game.tick(input, rgb);
       input.pressed.clear();
-      $('gameScore').textContent = game.score;
+      $('gameScore').textContent = game.score; $('bpScore').textContent = game.score;
       if (game.over) {
         navigator.vibrate?.(200);
         if (game.score > best(gameSel.name)) { try { localStorage.setItem('tivoo-best-' + gameSel.name, game.score); } catch {} $('gameBest').textContent = game.score; ui.status(`New best: ${game.score}! Press A to play again.`); }
@@ -558,19 +570,21 @@ function startGame() {
     }
     gameT++;
     drawLeds(rgb);
-    if (tivoo.connected && !tivoo.busy) tivoo.send(D.imageMessages(rgb));
+    if (!$('bigPad').hidden) $('bpScreen').getContext('2d').drawImage($('preview'), 0, 0, 160, 160);
+    if (tivoo.connected) tivoo.sendLatest(rgb);
     player.timer = setTimeout(tick, Math.max(60, (game.over ? 200 : game.tickMs) - (performance.now() - start)));
   };
   tick();
 }
-function stopGame() { game = null; if (liveSource === 'game') { player.stop(); liveSource = null; } $('gameStart').textContent = '▶ Play'; ui.status('Game stopped.'); }
+function stopGameHook() { $('bpPlay').textContent = '▶'; releaseWakeLock(); }
+function stopGame() { stopGameHook(); game = null; if (liveSource === 'game') { player.stop(); liveSource = null; } $('gameStart').textContent = '▶ Play'; ui.status('Game stopped.'); }
 $('gameStart').onclick = () => (game && liveSource === 'game' ? stopGame() : startGame());
 
 function press(key) { input.pressed.add(key); input.held[key] = true; }
 function release(key) { input.held[key] = false; }
-document.querySelectorAll('.pad button').forEach(b => {
+document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   const k = b.dataset.key;
-  b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('down'); press(k); if (!game && k === 'a') startGame(); });
+  b.addEventListener('pointerdown', e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add('down'); press(k); if (!game && k === 'a') startGame(); });
   const up = () => { b.classList.remove('down'); release(k); };
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   b.addEventListener('contextmenu', e => e.preventDefault());
@@ -593,6 +607,52 @@ const endSwipe = () => { if (!swipe) return; if (swipe.k) release(swipe.k); else
 $('preview').addEventListener('pointerup', endSwipe);
 $('preview').addEventListener('pointercancel', () => { if (swipe?.k) release(swipe.k); swipe = null; });
 $('preview').style.touchAction = 'none';
+
+// ----- big full-screen controller -----
+$('bigPadBtn').onclick = async () => {
+  $('bigPad').hidden = false; $('bpGame').textContent = gameSel.name;
+  try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch {}
+  try { await screen.orientation.lock('landscape'); } catch {}
+  if (!game) startGame();
+};
+$('bpClose').onclick = async () => {
+  $('bigPad').hidden = true;
+  try { screen.orientation.unlock(); } catch {}
+  try { if (document.fullscreenElement) await document.exitFullscreen(); } catch {}
+};
+$('bpPlay').onclick = () => (game && liveSource === 'game' ? stopGame() : startGame());
+
+// keep the phone screen on while a game runs
+let wakeLock = null;
+async function keepAwake() { try { wakeLock = wakeLock || await navigator.wakeLock?.request('screen'); } catch {} }
+function releaseWakeLock() { try { wakeLock?.release(); } catch {} wakeLock = null; }
+
+// ----- Bluetooth / USB game controllers (Gamepad API, standard mapping) -----
+const padPrev = {};
+function pollGamepads() {
+  const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  if (!pads.length) return;
+  const now = { up: false, down: false, left: false, right: false, a: false, start: false };
+  for (const gp of pads) {
+    const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    now.up ||= b(12) || ay < -0.5; now.down ||= b(13) || ay > 0.5;
+    now.left ||= b(14) || ax < -0.5; now.right ||= b(15) || ax > 0.5;
+    now.a ||= b(0) || b(1) || b(2) || b(3) || b(7); now.start ||= b(9);
+  }
+  for (const k of ['up', 'down', 'left', 'right', 'a']) {
+    if (now[k] && !padPrev[k]) { press(k); if (k === 'a' && (!game || liveSource !== 'game') && document.querySelector('#games.active')) startGame(); }
+    if (!now[k] && padPrev[k]) release(k);
+    padPrev[k] = now[k];
+  }
+  if (now.start && !padPrev.start) { document.querySelector('[data-tab=games]').click(); game && liveSource === 'game' ? (game.over ? startGame() : stopGame()) : startGame(); }
+  padPrev.start = now.start;
+}
+let padLoop = null;
+window.addEventListener('gamepadconnected', e => {
+  ui.status(`🎮 Controller connected: ${e.gamepad.id.split('(')[0].trim()}. Press Start or A to play.`);
+  if (!padLoop) { const loop = () => { pollGamepads(); padLoop = requestAnimationFrame(loop); }; loop(); }
+});
+window.addEventListener('gamepaddisconnected', () => { if (!navigator.getGamepads().some(Boolean)) { cancelAnimationFrame(padLoop); padLoop = null; ui.status('Controller disconnected.'); } });
 
 // the Tivoo's own built-in games
 $('bgStart').onclick = () => { if (!tivoo.connected) return ui.status('Connect to the Tivoo first.'); stopGame(); tivoo.send(D.cmd.game(+$('bgNum').value)); ui.status('Started the Tivoo game. Use the buttons below.'); };
