@@ -57,6 +57,13 @@ const ICONS = {
     set(rgb, 7, 12, [150, 150, 160]); set(rgb, 8, 12, [110, 110, 120]);
     if (t % 10 < 2) set(rgb, 7, 11, [255, 240, 120]);
   },
+  'Road Hopper'(rgb, t) {
+    for (let x = 2; x <= 13; x++) { set(rgb, x, 2, [20, 60, 160]); set(rgb, x, 3, [20, 60, 160]); set(rgb, x, 4, [20, 60, 160]); set(rgb, x, 6, [70, 40, 110]); for (let y = 7; y <= 10; y++) set(rgb, x, y, [25, 25, 30]); set(rgb, x, 11, [70, 40, 110]); }
+    const lx = 2 + (t / 3 | 0) % 12; for (let k = 0; k < 4; k++) set(rgb, 2 + (lx - 2 + k) % 12, 3, [140, 90, 40]);
+    const c1 = 13 - (t / 2 | 0) % 12; set(rgb, c1, 8, [255, 70, 70]); set(rgb, c1 - 1 < 2 ? 13 : c1 - 1, 8, [255, 70, 70]);
+    const c2 = 2 + (t / 3 | 0) % 12; set(rgb, c2, 9, [255, 210, 40]);
+    const hopY = [11, 10, 9, 8, 7, 6, 5][(t / 6 | 0) % 7]; set(rgb, 7, hopY, [140, 255, 90]);
+  },
   'Brick breaker'(rgb, t) {
     const C = [[255, 60, 60], [255, 150, 40], [255, 230, 40], [60, 220, 90]];
     for (let r = 0; r < 4; r++) for (let x = 2; x <= 13; x++) if ((x + r + (t / 10 | 0)) % 7) set(rgb, x, 2 + r, x % 2 ? dim(C[r], 0.6) : C[r]);
