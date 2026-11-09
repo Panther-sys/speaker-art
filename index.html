@@ -68,6 +68,11 @@
   .lib .item { position: relative; background: #000; border-radius: 10px; border: 1px solid var(--line); padding: 4px; cursor: pointer; }
   .lib canvas { width: 100%; aspect-ratio: 1; display: block; image-rendering: pixelated; }
   .lib .del { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; font-size: 12px; line-height: 1; background: var(--panel2); }
+  .pad { position: sticky; bottom: 0; z-index: 6; background: var(--panel); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 64px) 1fr; grid-template-rows: 56px 56px; gap: 8px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
+  .pad button { font-size: 20px; padding: 0; touch-action: none; }
+  .pad .abtn { grid-column: 4; grid-row: 1 / span 2; border-radius: 50%; width: 112px; height: 112px; justify-self: end; background: var(--accent); border-color: var(--accent); font-size: 28px; }
+  .pad button.down { background: var(--accent2); color: #000; }
+  .tabs button { padding: 9px 2px; font-size: 12px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -94,6 +99,7 @@
     <button data-tab="fun" class="active">✨ Fun</button>
     <button data-tab="pic">🖼️ Picture</button>
     <button data-tab="text">🔤 Text</button>
+    <button data-tab="games">🎮 Games</button>
     <button data-tab="draw">✏️ Draw</button>
     <button data-tab="ctl">🎛️ Controls</button>
   </nav>
@@ -181,6 +187,37 @@
         <button class="secondary" id="txtLive">Stream live</button>
       </div>
       <p class="hint">Long text is scrolled in bigger steps so it fits the Tivoo's 60-frame limit. Use Stream live for smooth scrolling of long messages.</p>
+    </div>
+  </section>
+
+  <!-- GAMES -->
+  <section id="games">
+    <div class="card">
+      <h2>Games</h2>
+      <div class="grid" id="gameGrid"></div>
+      <p class="hint" id="gameHelp"></p>
+      <div class="row" style="margin:10px 0 4px">
+        <button class="primary" id="gameStart">▶ Play</button>
+        <div style="flex:none;text-align:right;font-size:13px;color:var(--muted)">Score <b id="gameScore" style="color:var(--text)">0</b> · Best <b id="gameBest">0</b></div>
+      </div>
+      <div class="pad">
+        <span></span><button data-key="up">▲</button><span></span>
+        <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
+        <button data-key="a" class="abtn">A</button>
+      </div>
+      <p class="hint">You can also swipe or tap on the preview screen above. On a computer, use the arrow keys and Space.</p>
+    </div>
+    <div class="card">
+      <h2>Tivoo's own games</h2>
+      <div class="row">
+        <div><label>Game #</label><input type="number" id="bgNum" min="0" max="20" value="0"></div>
+        <div style="flex:none;align-self:end"><button id="bgStart">Start</button></div>
+        <div style="flex:none;align-self:end"><button id="bgStop">Exit</button></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button data-bg="go">GO</button><button data-bg="left">◀</button><button data-bg="up">▲</button><button data-bg="down">▼</button><button data-bg="right">▶</button><button data-bg="ok">OK</button>
+      </div>
+      <p class="hint">These run on the speaker itself (for example the magic 8-ball). The numbers vary by firmware, so try a few.</p>
     </div>
   </section>
 

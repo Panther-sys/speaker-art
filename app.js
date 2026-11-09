@@ -1,5 +1,6 @@
 import * as D from './divoom.js';
 import { EFFECTS, renderFrames } from './effects.js';
+import { GAMES, gameOverFrame } from './games.js';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -141,6 +142,7 @@ $('tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
   document.querySelectorAll('section').forEach(s => s.classList.toggle('active', s.id === b.dataset.tab));
+  if (b.dataset.tab !== 'games' && liveSource === 'game') stopGame();
   if (b.dataset.tab === 'draw') { player.stop(); drawLeds(editor.px); }
 });
 
@@ -513,6 +515,89 @@ $('txtLive').onclick = () => {
   if (player.live && liveSource === 'txt') { player.stop(); player.loop(textFrames()); ui.status('Stopped streaming.'); return; }
   startTextLive();
 };
+
+// ---------------- Games ----------------
+let gameSel = GAMES[0], game = null, gameT = 0;
+const input = { held: {}, pressed: new Set() };
+const best = name => { try { return +localStorage.getItem('tivoo-best-' + name) || 0; } catch { return 0; } };
+GAMES.forEach((gm, i) => {
+  const b = document.createElement('button');
+  b.className = 'fx gm' + (i === 0 ? ' sel' : '');
+  b.innerHTML = `<b>${gm.emoji}</b>${gm.name}`;
+  b.onclick = () => { gameSel = gm; document.querySelectorAll('.gm').forEach(x => x.classList.toggle('sel', x === b)); showGameInfo(); if (game) startGame(); };
+  $('gameGrid').appendChild(b);
+});
+function showGameInfo() { $('gameHelp').textContent = gameSel.help; $('gameBest').textContent = best(gameSel.name); $('gameScore').textContent = 0; }
+showGameInfo();
+
+function startGame() {
+  player.stop();
+  liveSource = 'game';
+  game = gameSel.create(); gameT = 0;
+  input.pressed.clear();
+  $('gameStart').textContent = '■ Stop';
+  $('badge').textContent = tivoo.connected ? '● game on Tivoo' : 'game preview';
+  ui.status(`Playing ${gameSel.name}.${tivoo.connected ? '' : ' Connect to play it on the Tivoo.'}`);
+  const rgb = new Uint8Array(N * N * 3);
+  const tick = () => {
+    if (liveSource !== 'game' || !game) return;
+    const start = performance.now();
+    if (!game.over) {
+      game.tick(input, rgb);
+      input.pressed.clear();
+      $('gameScore').textContent = game.score;
+      if (game.over) {
+        navigator.vibrate?.(200);
+        if (game.score > best(gameSel.name)) { try { localStorage.setItem('tivoo-best-' + gameSel.name, game.score); } catch {} $('gameBest').textContent = game.score; ui.status(`New best: ${game.score}! Press A to play again.`); }
+        else ui.status(`${game.won ? 'You win' : 'Game over'}: ${game.score}. Press A to play again.`);
+      }
+    } else {
+      gameOverFrame(rgb, game, gameT);
+      if (input.pressed.has('a')) { input.pressed.clear(); return startGame(); }
+      input.pressed.clear();
+    }
+    gameT++;
+    drawLeds(rgb);
+    if (tivoo.connected && !tivoo.busy) tivoo.send(D.imageMessages(rgb));
+    player.timer = setTimeout(tick, Math.max(60, (game.over ? 200 : game.tickMs) - (performance.now() - start)));
+  };
+  tick();
+}
+function stopGame() { game = null; if (liveSource === 'game') { player.stop(); liveSource = null; } $('gameStart').textContent = '▶ Play'; ui.status('Game stopped.'); }
+$('gameStart').onclick = () => (game && liveSource === 'game' ? stopGame() : startGame());
+
+function press(key) { input.pressed.add(key); input.held[key] = true; }
+function release(key) { input.held[key] = false; }
+document.querySelectorAll('.pad button').forEach(b => {
+  const k = b.dataset.key;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('down'); press(k); if (!game && k === 'a') startGame(); });
+  const up = () => { b.classList.remove('down'); release(k); };
+  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+  b.addEventListener('contextmenu', e => e.preventDefault());
+});
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a' };
+document.addEventListener('keydown', e => { const k = KEYMAP[e.key]; if (!k || liveSource !== 'game' || e.target.matches('input, select, textarea')) return; e.preventDefault(); if (!e.repeat) press(k); });
+document.addEventListener('keyup', e => { const k = KEYMAP[e.key]; if (k) release(k); });
+// swipe / tap on the preview screen
+let swipe = null;
+$('preview').addEventListener('pointerdown', e => { if (liveSource === 'game') swipe = { x: e.clientX, y: e.clientY, k: null }; });
+$('preview').addEventListener('pointermove', e => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+  if (Math.hypot(dx, dy) < 24) return;
+  const k = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+  if (swipe.k !== k) { if (swipe.k) release(swipe.k); press(k); swipe.k = k; }
+  swipe.x = e.clientX; swipe.y = e.clientY;
+});
+const endSwipe = () => { if (!swipe) return; if (swipe.k) release(swipe.k); else press('a'), setTimeout(() => release('a'), 50); swipe = null; };
+$('preview').addEventListener('pointerup', endSwipe);
+$('preview').addEventListener('pointercancel', () => { if (swipe?.k) release(swipe.k); swipe = null; });
+$('preview').style.touchAction = 'none';
+
+// the Tivoo's own built-in games
+$('bgStart').onclick = () => { if (!tivoo.connected) return ui.status('Connect to the Tivoo first.'); stopGame(); tivoo.send(D.cmd.game(+$('bgNum').value)); ui.status('Started the Tivoo game. Use the buttons below.'); };
+$('bgStop').onclick = () => tivoo.connected && tivoo.send(D.cmd.game(null));
+document.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => tivoo.connected && tivoo.send(D.cmd.gameKey(b.dataset.bg), { gap: 100 }));
 
 // ---------------- Draw ----------------
 const PALETTE = ['#000000', '#ffffff', '#ff004d', '#ff7a00', '#ffec27', '#00e436', '#29adff', '#83769c',
