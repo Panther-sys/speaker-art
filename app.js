@@ -1,6 +1,6 @@
-import * as D from './divoom.js';
-import { EFFECTS, renderFrames } from './effects.js';
-import { GAMES, gameOverFrame } from './games.js';
+import * as D from './divoom.js?v=4';
+import { EFFECTS, renderFrames } from './effects.js?v=4';
+import { GAMES, gameOverFrame } from './games.js?v=4';
 
 const $ = id => document.getElementById(id);
 const N = 16;
