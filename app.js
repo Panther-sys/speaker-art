@@ -1,8 +1,8 @@
-import * as D from './divoom.js?v=13';
-import { EFFECTS, renderFrames } from './effects.js?v=13';
-import { GAMES, gameOverFrame } from './games.js?v=13';
-import * as sfx from './sfx.js?v=13';
-import { drawLibrary, drawPause } from './menu.js?v=13';
+import * as D from './divoom.js?v=14';
+import { EFFECTS, renderFrames } from './effects.js?v=14';
+import { GAMES, gameOverFrame } from './games.js?v=14';
+import * as sfx from './sfx.js?v=14';
+import { drawLibrary, drawPause } from './menu.js?v=14';
 
 const $ = id => document.getElementById(id);
 const N = 16;

@@ -857,7 +857,7 @@ const GAME_LIST = [
         }
 
         // --- floor and ceiling, cast per pixel so the tiles and torchlight sit on the ground ---
-        const plane = 0.66, zbuf = new Array(N), rays = [];
+        const plane = 0.66, zbuf = new Array(N), faces = new Array(N), rays = [];
         for (let col = 0; col < N; col++) { const cam = 2 * (col + 0.5) / N - 1; rays.push([dx - dy * plane * cam, dy + dx * plane * cam]); }
         for (let y = 0; y < VIEW; y++) {
           const off = y + 0.5 - MID;
@@ -882,6 +882,8 @@ const GAME_LIST = [
           }
           const dist = Math.max(0.05, side ? sdy - ddy : sdx - ddx);
           zbuf[col] = dist;
+          // which flat wall face this ray hit: neighbouring columns on the same face share it
+          faces[col] = side ? 'y' + (my + (sty < 0 ? 1 : 0)) : 'x' + (mx + (stx < 0 ? 1 : 0));
           const hx = px + rx * dist, hy = py + ry * dist;
           const u = (side ? hx : hy) % 1;
           const hgt = VIEW / dist, top = (VIEW - hgt) / 2, bot = top + hgt;
@@ -889,6 +891,14 @@ const GAME_LIST = [
             const v = (y + 0.5 - top) / hgt, base = wallColor(hit, u, v, side);
             if (Math.min(y + 1, bot) - Math.max(y, top) >= 0.5) set(rgb, col, y, hit === 9 || hit === 5 ? base : step(base, dist));
           }
+        }
+
+        // --- dark edges where one wall face ends and another begins, so corners and gaps stand out ---
+        for (let col = 0; col < N; col++) {
+          const edge = [col - 1, col + 1].some(n => n >= 0 && n < N && faces[n] !== faces[col] && zbuf[col] >= zbuf[n] - 0.05);
+          if (!edge) continue;
+          const hgt = VIEW / zbuf[col], top = (VIEW - hgt) / 2;
+          for (let y = Math.max(0, Math.round(top)); y < Math.min(VIEW, Math.round(top + hgt)); y++) set(rgb, col, y, BLACK);
         }
 
         // --- monsters ---
