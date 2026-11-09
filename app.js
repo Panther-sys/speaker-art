@@ -200,17 +200,28 @@ $('fxLive').onclick = () => {
 };
 
 // ---------------- Picture ----------------
-let picFrames = null, picSource = null;
-$('picFile').onchange = async e => {
-  const file = e.target.files[0]; if (!file) return;
+let picFrames = null, picSource = null, picName = 'picture', crop = null;
+$('picFile').onchange = e => { const f = e.target.files[0]; if (f) loadPictureFile(f); };
+
+async function loadPictureFile(file) {
   try {
     ui.status('Loading picture…');
     picSource = await decodeImage(file);
-    $('dropZone').firstChild.textContent = file.name + ' ';
+    picName = (file.name || 'picture').replace(/\.[^.]+$/, '');
+    $('dropText').textContent = (file.name || 'Shared picture') + ' (tap to change)';
+    $('picEdit').style.display = 'block';
+    const { bmp } = picSource[0];
+    const s = Math.min(bmp.width, bmp.height);
+    crop = { x: (bmp.width - s) / 2, y: (bmp.height - s) / 2, size: s };
+    $('cropZoom').value = 100;
+    const pixel = looksLikePixelArt(bmp);
+    $('picSmooth').checked = !pixel;
+    $('picBoost').value = pixel ? 0 : 30;
+    syncCropUi();
     await renderPic();
+    if (pixel) ui.status('Looks like pixel art, so smooth scaling is off to keep it crisp.');
   } catch (err) { ui.error(err); }
-};
-['picFit', 'picSmooth', 'picBoost'].forEach(id => $(id).addEventListener('input', () => picSource && renderPic()));
+}
 
 async function decodeImage(file) {
   const frames = [];
@@ -231,34 +242,188 @@ async function decodeImage(file) {
   return frames;
 }
 
+// Small images, or big ones made of solid blocks (upscaled sprites), are pixel art.
+function looksLikePixelArt(bmp) {
+  if (bmp.width <= 64 && bmp.height <= 64) return true;
+  const w = Math.min(bmp.width, 400), h = Math.round(bmp.height * w / bmp.width);
+  const cx = new OffscreenCanvas(w, h).getContext('2d', { willReadFrequently: true });
+  cx.imageSmoothingEnabled = false;
+  cx.drawImage(bmp, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h).data;
+  let same = 0, total = 0;
+  const colors = new Set();
+  for (let y = 0; y < h; y += 2) for (let x = 0; x < w - 1; x++) {
+    const i = (y * w + x) * 4;
+    if (d[i] === d[i + 4] && d[i + 1] === d[i + 5] && d[i + 2] === d[i + 6]) same++;
+    total++;
+    if (colors.size < 300) colors.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+  }
+  return same / total > 0.75 && colors.size < 300;
+}
+
+// ----- crop box -----
+const cropCv = $('cropCv');
+function drawCrop() {
+  if (!picSource) return;
+  const { bmp } = picSource[0];
+  const W = 600, H = Math.round(W * bmp.height / bmp.width);
+  cropCv.width = W; cropCv.height = H;
+  const c = cropCv.getContext('2d');
+  c.imageSmoothingEnabled = $('picSmooth').checked;
+  c.drawImage(bmp, 0, 0, W, H);
+  if ($('picFit').value !== 'crop') return;
+  const k = W / bmp.width, x = crop.x * k, y = crop.y * k, s = crop.size * k;
+  c.fillStyle = '#000a';
+  c.fillRect(0, 0, W, y); c.fillRect(0, y + s, W, H - y - s); c.fillRect(0, y, x, s); c.fillRect(x + s, y, W - x - s, s);
+  c.strokeStyle = '#ff5c8a'; c.lineWidth = 4; c.strokeRect(x, y, s, s);
+}
+function clampCrop() {
+  const { bmp } = picSource[0];
+  crop.size = Math.max(4, Math.min(crop.size, bmp.width, bmp.height));
+  crop.x = Math.max(0, Math.min(bmp.width - crop.size, crop.x));
+  crop.y = Math.max(0, Math.min(bmp.height - crop.size, crop.y));
+}
+function syncCropUi() { const isCrop = $('picFit').value === 'crop'; $('cropZoomRow').style.display = isCrop ? '' : 'none'; drawCrop(); }
+let rerenderTimer;
+function rerenderSoon() { drawCrop(); clearTimeout(rerenderTimer); rerenderTimer = setTimeout(renderPic, 60); }
+function setZoom(z, cx, cy) {
+  const { bmp } = picSource[0], base = Math.min(bmp.width, bmp.height);
+  z = Math.max(1, Math.min(8, z));
+  const mx = cx ?? crop.x + crop.size / 2, my = cy ?? crop.y + crop.size / 2;
+  crop.size = base / z; crop.x = mx - crop.size / 2; crop.y = my - crop.size / 2;
+  clampCrop(); $('cropZoom').value = Math.round(z * 100); rerenderSoon();
+}
+$('cropZoom').oninput = e => setZoom(+e.target.value / 100);
+const pointers = new Map();
+let dragStart = null, pinchStart = null;
+const toSrc = e => { const r = cropCv.getBoundingClientRect(), k = picSource[0].bmp.width / r.width; return [(e.clientX - r.left) * k, (e.clientY - r.top) * k]; };
+cropCv.addEventListener('pointerdown', e => {
+  if (!picSource || $('picFit').value !== 'crop') return;
+  cropCv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, toSrc(e));
+  if (pointers.size === 1) {
+    const [x, y] = toSrc(e);
+    // tap outside the box centres it there; drag inside moves it
+    if (x < crop.x || y < crop.y || x > crop.x + crop.size || y > crop.y + crop.size) { crop.x = x - crop.size / 2; crop.y = y - crop.size / 2; clampCrop(); rerenderSoon(); }
+    dragStart = { x, y, cx: crop.x, cy: crop.y };
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinchStart = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), size: crop.size };
+    dragStart = null;
+  }
+});
+cropCv.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, toSrc(e));
+  if (pinchStart && pointers.size === 2) {
+    const [a, b] = [...pointers.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const base = Math.min(picSource[0].bmp.width, picSource[0].bmp.height);
+    setZoom(base / (pinchStart.size * pinchStart.d / Math.max(d, 1)), crop.x + crop.size / 2, crop.y + crop.size / 2);
+  } else if (dragStart) {
+    const [x, y] = toSrc(e);
+    crop.x = dragStart.cx + x - dragStart.x; crop.y = dragStart.cy + y - dragStart.y; clampCrop(); rerenderSoon();
+  }
+});
+const endPointer = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchStart = null; if (!pointers.size) dragStart = null; };
+cropCv.addEventListener('pointerup', endPointer);
+cropCv.addEventListener('pointercancel', endPointer);
+cropCv.addEventListener('wheel', e => { if (!picSource || $('picFit').value !== 'crop') return; e.preventDefault(); setZoom(+$('cropZoom').value / 100 * (e.deltaY < 0 ? 1.15 : 1 / 1.15)); }, { passive: false });
+
+$('picFit').addEventListener('input', () => { syncCropUi(); picSource && renderPic(); });
+$('picSmooth').addEventListener('input', () => { drawCrop(); picSource && renderPic(); });
+['picBoost', 'picSpeed'].forEach(id => $(id).addEventListener('input', () => picSource && renderPic()));
+
 async function renderPic() {
-  const fit = $('picFit').value, smooth = $('picSmooth').checked, boost = +$('picBoost').value / 100;
+  const fit = $('picFit').value, smooth = $('picSmooth').checked, boost = +$('picBoost').value / 100, speed = +$('picSpeed').value;
   const cv = new OffscreenCanvas(N, N), cx = cv.getContext('2d', { willReadFrequently: true });
   picFrames = picSource.map(({ bmp, time }) => {
     cx.fillStyle = '#000'; cx.fillRect(0, 0, N, N);
     cx.imageSmoothingEnabled = smooth; cx.imageSmoothingQuality = 'high';
     let w = bmp.width, h = bmp.height, dx = 0, dy = 0, dw = N, dh = N, sx = 0, sy = 0, sw = w, sh = h;
-    if (fit === 'cover') { const s = Math.min(w, h); sx = (w - s) / 2; sy = (h - s) / 2; sw = sh = s; }
-    if (fit === 'contain') { const s = N / Math.max(w, h); dw = Math.round(w * s); dh = Math.round(h * s); dx = (N - dw) >> 1; dy = (N - dh) >> 1; }
+    if (fit === 'crop') { sx = crop.x; sy = crop.y; sw = sh = crop.size; }
+    if (fit === 'contain') { const s = N / Math.max(w, h); dw = Math.max(1, Math.round(w * s)); dh = Math.max(1, Math.round(h * s)); dx = (N - dw) >> 1; dy = (N - dh) >> 1; }
     cx.drawImage(bmp, sx, sy, sw, sh, dx, dy, dw, dh);
     const d = cx.getImageData(0, 0, N, N).data, rgb = new Uint8Array(N * N * 3);
     for (let i = 0; i < N * N; i++) {
       let r = d[i * 4], g = d[i * 4 + 1], b = d[i * 4 + 2];
       const a = d[i * 4 + 3] / 255; r *= a; g *= a; b *= a;
-      if (boost) { const l = (r + g + b) / 3; r = l + (r - l) * (1 + boost * 1.5); g = l + (g - l) * (1 + boost * 1.5); b = l + (b - l) * (1 + boost * 1.5); }
+      if (boost) { const l = (r + g + b) / 3, k = 1 + boost * 1.5; r = l + (r - l) * k; g = l + (g - l) * k; b = l + (b - l) * k; }
       rgb[i * 3] = clamp(r); rgb[i * 3 + 1] = clamp(g); rgb[i * 3 + 2] = clamp(b);
     }
-    return { rgb, time };
+    return { rgb, time: time ? Math.max(20, Math.round(time / speed)) : 0 };
   });
   player.loop(picFrames);
-  $('picSend').disabled = false;
+  $('picSend').disabled = $('picSave').disabled = false;
   $('picInfo').textContent = picFrames.length > 1
-    ? `Animated: ${picFrames.length} frames${picFrames.length > D.MAX_FRAMES ? ` (will be thinned to ${D.MAX_FRAMES} for the Tivoo)` : ''}.`
+    ? `Animated: ${picFrames.length} frames${picFrames.length > D.MAX_FRAMES ? ` (the Tivoo holds ${D.MAX_FRAMES}, so it will skip some evenly)` : ''}.`
     : 'Still image.';
-  ui.status('Preview ready.');
 }
 const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
 $('picSend').onclick = () => { liveSource = null; picFrames && (player.loop(picFrames), upload(picFrames, 'picture')); };
+
+// ----- library (IndexedDB, this device only) -----
+const lib = {
+  db: null,
+  async open() {
+    if (this.db) return this.db;
+    this.db = await new Promise((res, rej) => {
+      const r = indexedDB.open('tivoo-studio', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('lib', { keyPath: 'id', autoIncrement: true });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    return this.db;
+  },
+  async tx(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => { const t = db.transaction('lib', mode); const r = fn(t.objectStore('lib')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); });
+  },
+  all() { return this.tx('readonly', s => s.getAll()); },
+  add(item) { return this.tx('readwrite', s => s.add(item)); },
+  del(id) { return this.tx('readwrite', s => s.delete(id)); },
+};
+async function renderLib() {
+  let items = [];
+  try { items = await lib.all(); } catch { $('libEmpty').textContent = 'The library is not available in this browser mode.'; return; }
+  const box = $('lib'); box.innerHTML = '';
+  $('libEmpty').style.display = items.length ? 'none' : '';
+  for (const it of items.reverse()) {
+    const d = document.createElement('div'); d.className = 'item'; d.title = it.name;
+    const c = document.createElement('canvas'); c.width = c.height = N;
+    const cx = c.getContext('2d'), img = cx.createImageData(N, N);
+    const thumb = (rgb) => { for (let i = 0; i < N * N; i++) img.data.set([rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], 255], i * 4); cx.putImageData(img, 0, 0); };
+    thumb(it.frames[0].rgb);
+    if (it.frames.length > 1) { let k = 0; const step = () => { if (!c.isConnected) return; k = (k + 1) % it.frames.length; thumb(it.frames[k].rgb); setTimeout(step, it.frames[k].time || 100); }; setTimeout(step, 100); }
+    const del = document.createElement('button'); del.className = 'del'; del.textContent = '✕'; del.title = 'Remove';
+    del.onclick = async e => { e.stopPropagation(); await lib.del(it.id); renderLib(); ui.status(`Removed ${it.name}.`); };
+    d.onclick = () => { liveSource = null; player.loop(it.frames); upload(it.frames, it.name); };
+    d.append(c, del); box.appendChild(d);
+  }
+}
+$('picSave').onclick = async () => {
+  if (!picFrames) return;
+  try {
+    await lib.add({ name: picName, created: Date.now(), frames: D.thin(picFrames, D.MAX_FRAMES).map(f => ({ rgb: f.rgb, time: f.time })) });
+    ui.status(`Saved ${picName} to your library.`); renderLib();
+  } catch (e) { ui.error(e); }
+};
+renderLib();
+
+// ----- files shared into the installed app (Web Share Target, handled by sw.js) -----
+async function takeSharedFile() {
+  if (!new URLSearchParams(location.search).has('shared')) return;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const cache = await caches.open('tivoo-shared');
+    const res = await cache.match('shared-file');
+    if (!res) return;
+    await cache.delete('shared-file');
+    const blob = await res.blob();
+    const name = decodeURIComponent(res.headers.get('x-file-name') || 'shared');
+    document.querySelector('[data-tab=pic]').click();
+    await loadPictureFile(new File([blob], name, { type: blob.type }));
+  } catch (e) { ui.error(e); }
+}
+takeSharedFile();
 
 // ---------------- Text ----------------
 // Classic 5x7 font, one byte per column, bit 0 = top row.
@@ -438,4 +603,4 @@ function hsv(h) { const f = n => { const k = (n + h * 6) % 6; return Math.round(
 
 // start with an animation in the preview
 previewFx();
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
