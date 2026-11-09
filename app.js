@@ -1,8 +1,8 @@
-import * as D from './divoom.js?v=11';
-import { EFFECTS, renderFrames } from './effects.js?v=11';
-import { GAMES, gameOverFrame } from './games.js?v=11';
-import * as sfx from './sfx.js?v=11';
-import { drawLibrary, drawPause } from './menu.js?v=11';
+import * as D from './divoom.js?v=13';
+import { EFFECTS, renderFrames } from './effects.js?v=13';
+import { GAMES, gameOverFrame } from './games.js?v=13';
+import * as sfx from './sfx.js?v=13';
+import { drawLibrary, drawPause } from './menu.js?v=13';
 
 const $ = id => document.getElementById(id);
 const N = 16;
@@ -567,6 +567,7 @@ function selectGame(i) {
   document.querySelectorAll('.gm').forEach((x, k) => x.classList.toggle('sel', k === selIdx));
   $('gameHelp').textContent = gameSel().help; $('gameBest').textContent = best(gameSel().name); $('gameScore').textContent = 0;
   $('bpGame').textContent = gameSel().name;
+  document.body.classList.toggle('usesx', !!gameSel().usesX); // the X button only shows in games that use it
 }
 selectGame(0);
 
@@ -671,7 +672,7 @@ document.querySelectorAll('.pad button, .bigpad [data-key]').forEach(b => {
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
   b.addEventListener('contextmenu', e => e.preventDefault());
 });
-const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu', y: 'y', Tab: 'y' };
+const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', ' ': 'a', Enter: 'a', Escape: 'b', Backspace: 'b', p: 'start', m: 'menu', y: 'y', Tab: 'y', x: 'x', q: 'x' };
 // player 2 on a keyboard: WASD to move, F = A, G = B
 const KEYMAP2 = { w: 'up', a: 'left', s: 'down', d: 'right', f: 'a', g: 'b' };
 document.addEventListener('keydown', e => {
@@ -740,7 +741,7 @@ function pollGamepads() {
     const b = i => !!gp.buttons[i]?.pressed, ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
     const now = {
       up: b(12) || ay < -0.5, down: b(13) || ay > 0.5, left: b(14) || ax < -0.5, right: b(15) || ax > 0.5,
-      a: b(0) || b(2) || b(7), b: b(1), y: b(3), start: b(9), menu: b(8) || b(16), sl: b(4), sr: b(5),
+      a: b(0) || b(2) || b(7), b: b(1), x: b(2), y: b(3), start: b(9), menu: b(8) || b(16), sl: b(4), sr: b(5),
     };
     // analog sticks: left x/y and right x/y (the right stick turns you in Maze Raider)
     const axes = { lx: dz(ax), ly: dz(ay), rx: dz(gp.axes[2] || 0), ry: dz(gp.axes[3] || 0) };
